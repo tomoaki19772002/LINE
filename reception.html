@@ -333,7 +333,7 @@
       <label>診察室</label>
       <div class="room-buttons">
         <button class="room-btn" id="room1" onclick="selectRoom(1)">１</button>
-        <button class="room-btn" id="room2" onclick="selectRoom(2)">２</button>
+        <button class="room-btn" id="room3" onclick="selectRoom(3)">３</button>
       </div>
     </div>
     <div class="form-row">
@@ -393,7 +393,7 @@
   function selectRoom(room) {
     selectedRoom = room;
     document.getElementById('room1').classList.toggle('selected', room === 1);
-    document.getElementById('room2').classList.toggle('selected', room === 2);
+    document.getElementById('room3').classList.toggle('selected', room === 3);
   }
 
   // ── 案内ボタン ───────────────────────────────────────────────
