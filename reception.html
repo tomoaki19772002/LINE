@@ -172,10 +172,7 @@
     }
     .form-row input[type="number"]::-webkit-inner-spin-button,
     .form-row input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
-
-    .form-row input[type="number"]:focus {
-      border-color: #2c5f8a;
-    }
+    .form-row input[type="number"]:focus { border-color: #2c5f8a; }
 
     .room-buttons {
       display: flex;
@@ -195,16 +192,8 @@
       font-weight: bold;
       color: #2c5f8a;
     }
-
-    .room-btn.selected {
-      background: #2c5f8a;
-      border-color: #2c5f8a;
-      color: #fff;
-    }
-
-    .room-btn:hover:not(.selected) {
-      background: #e0ecf8;
-    }
+    .room-btn.selected { background: #2c5f8a; border-color: #2c5f8a; color: #fff; }
+    .room-btn:hover:not(.selected) { background: #e0ecf8; }
 
     .announce-btn {
       padding: 10px;
@@ -218,13 +207,9 @@
       letter-spacing: 0.1em;
       transition: background 0.2s, transform 0.1s;
     }
-
     .announce-btn:hover { background: #237a52; }
     .announce-btn:active { transform: scale(0.98); }
-    .announce-btn:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
+    .announce-btn:disabled { background: #aaa; cursor: not-allowed; }
 
     .repeat-btn {
       padding: 7px;
@@ -237,7 +222,6 @@
       transition: background 0.2s;
       letter-spacing: 0.05em;
     }
-
     .repeat-btn:hover { background: #4a6a8a; }
     .repeat-btn:disabled { background: #aaa; cursor: not-allowed; }
 
@@ -260,22 +244,12 @@
       color: #666;
       min-height: 1.2em;
     }
-
     .status.speaking { color: #2c8a5f; font-weight: bold; }
     .status.error { color: #c0392b; }
 
-
     /* 履歴 */
-    .history-section {
-      width: 420px;
-    }
-
-    .history-section h2 {
-      font-size: 0.95rem;
-      color: #666;
-      margin-bottom: 8px;
-    }
-
+    .history-section { width: 420px; }
+    .history-section h2 { font-size: 0.95rem; color: #666; margin-bottom: 8px; }
     .history-list {
       list-style: none;
       display: flex;
@@ -284,7 +258,6 @@
       max-height: 150px;
       overflow-y: auto;
     }
-
     .history-list li {
       background: #fff;
       border-radius: 6px;
@@ -296,13 +269,12 @@
       justify-content: space-between;
       align-items: center;
     }
-
     .history-list li .time { color: #999; font-size: 0.8rem; }
   </style>
 </head>
 <body>
 
-<h1>診察案内システム</h1>
+  <h1>診察案内システム</h1>
   <p style="font-size:0.95rem;font-weight:bold;color:#555;letter-spacing:0.03em;line-height:1.6;text-align:center;margin-top:-12px;border:3px solid #2c5f8a;border-radius:6px;padding:6px 16px;background:#f7fafd;">
     ※受付時の番号は院内整理番号です。実際の診察順とは異なります。
   </p>
@@ -336,21 +308,10 @@
         <button class="room-btn" id="room3" onclick="selectRoom(3)">３</button>
       </div>
     </div>
-    <div class="form-row">
-      <label>話者</label>
-      <select id="speakerSelect" style="flex:1;padding:6px 10px;font-size:0.9rem;border:2px solid #b0c8e0;border-radius:6px;outline:none;">
-        <option value="13">青山龍星（落ち着いた男性）</option>
-        <option value="3">ずんだもん（明るい）</option>
-        <option value="8">春日部つむぎ（女性）</option>
-        <option value="2">四国めたん（女性・あまあま）</option>
-        <option value="1">四国めたん（女性・ノーマル）</option>
-      </select>
-    </div>
     <button class="announce-btn" id="announceBtn" onclick="announce()">📢 案内する</button>
     <button class="repeat-btn" id="repeatBtn" onclick="repeatAnnounce()" disabled>🔁 もう一度</button>
     <button class="clear-btn" onclick="clearDisplay()">現在ご案内していません</button>
     <div class="status" id="status">番号と診察室を選択してください</div>
-    <div id="voicevoxStatus" style="text-align:center;font-size:0.78rem;padding:4px 8px;border-radius:4px;"></div>
   </div>
 
   <!-- 履歴 -->
@@ -379,14 +340,12 @@
   let selectedRoom = null;
   let lastPatient = null;
   let lastRoom = null;
-  let currentAudio = null; // 再生中のVOICEVOX Audioオブジェクト
 
   // ── 受診番号 ±ボタン ─────────────────────────────────────────
   function stepNumber(delta) {
     const input = document.getElementById('patientNumber');
     const val = parseInt(input.value, 10) || 0;
-    const next = Math.min(99, Math.max(1, val + delta));
-    input.value = next;
+    input.value = Math.min(99, Math.max(1, val + delta));
   }
 
   // ── 診察室選択 ───────────────────────────────────────────────
@@ -398,46 +357,25 @@
 
   // ── 案内ボタン ───────────────────────────────────────────────
   function announce() {
-    const numInput = document.getElementById('patientNumber');
-    const patient = parseInt(numInput.value, 10);
-
+    const patient = parseInt(document.getElementById('patientNumber').value, 10);
     if (!patient || patient < 1 || patient > 99) {
-      setStatus('受診番号を1〜99で入力してください', 'error');
-      return;
+      setStatus('受診番号を1〜99で入力してください', 'error'); return;
     }
     if (!selectedRoom) {
-      setStatus('診察室（1番 または 2番）を選択してください', 'error');
-      return;
+      setStatus('診察室（1番 または 3番）を選択してください', 'error'); return;
     }
-
-    const speakerId = parseInt(document.getElementById('speakerSelect').value, 10);
-
-    // Firebase に書き込む → 全端末のリスナーが反応する
-    callRef.set({
-      patient,
-      room: selectedRoom,
-      speakerId,
-      timestamp: Date.now()
-    });
-  }
-
-  function clearDisplay() {
-    // 再生中の音声を即停止
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-    window.speechSynthesis.cancel();
-    callRef.set({ cleared: true, timestamp: Date.now() });
+    callRef.set({ patient, room: selectedRoom, timestamp: Date.now() });
   }
 
   function repeatAnnounce() {
     if (lastPatient && lastRoom) {
-      const speakerId = parseInt(document.getElementById('speakerSelect').value, 10);
-      callRef.set({
-        patient: lastPatient,
-        room: lastRoom,
-        speakerId,
-        timestamp: Date.now()
-      });
+      callRef.set({ patient: lastPatient, room: lastRoom, timestamp: Date.now() });
     }
+  }
+
+  function clearDisplay() {
+    window.speechSynthesis.cancel();
+    callRef.set({ cleared: true, timestamp: Date.now() });
   }
 
   // ── Firebase リスナー（全端末で受信・表示・音声）────────────
@@ -447,7 +385,6 @@
     const data = snapshot.val();
     if (!data || !data.timestamp) return;
 
-    // 初回ロード時（ページ開いた瞬間）は再生しない
     if (prevTimestamp === null) {
       prevTimestamp = data.timestamp;
       if (data.cleared) {
@@ -461,19 +398,16 @@
       return;
     }
 
-    // 新しいイベントだけ処理
     if (data.timestamp !== prevTimestamp) {
       prevTimestamp = data.timestamp;
-
       if (data.cleared) {
-        // 「ご案内していません」状態
         resetDisplay();
       } else {
         lastPatient = data.patient;
         lastRoom    = data.room;
         updateDisplay(data.patient, data.room);
         addHistory(data.patient, data.room);
-        speakAnnouncement(data.patient, data.room, data.speakerId || 13);
+        speakAnnouncement(data.patient, data.room);
         document.getElementById('repeatBtn').disabled = false;
       }
     }
@@ -492,59 +426,13 @@
     }
   });
 
-  // ── VOICEVOX / 音声 ──────────────────────────────────────────
-  const VOICEVOX_URL = 'http://localhost:50021';
+  // ── 音声（Web Speech API）────────────────────────────────────
+  async function speakAnnouncement(patient, room) {
+    const text = `${patient}番のかた、診察室${room}番に、おはいりください。`;
+    setStatus(`読み上げ中: 「${text}」`, 'speaking');
+    document.getElementById('announceBtn').disabled = true;
 
-  function fetchWithTimeout(url, options, ms) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
-    return fetch(url, { ...options, signal: controller.signal })
-      .finally(() => clearTimeout(timer));
-  }
-
-  async function checkVoicevox() {
-    const el = document.getElementById('voicevoxStatus');
-    try {
-      const res = await fetchWithTimeout(`${VOICEVOX_URL}/version`, {}, 2000);
-      if (res.ok) {
-        const ver = await res.text();
-        el.textContent = `✅ VOICEVOX 接続中 (v${ver.replace(/"/g,'')})`;
-        el.style.background = '#e6f4ea'; el.style.color = '#2c8a5f';
-        return true;
-      }
-    } catch {}
-    el.textContent = '⚠️ VOICEVOX未起動 → ブラウザ音声で代替';
-    el.style.background = '#fff8e1'; el.style.color = '#8a6d00';
-    return false;
-  }
-
-  async function speakVoicevox(text, speakerId) {
-    const query = await fetchWithTimeout(
-      `${VOICEVOX_URL}/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerId}`,
-      { method: 'POST' }, 5000
-    ).then(r => r.json());
-
-    query.speedScale = 0.93; query.intonationScale = 1.15;
-    query.volumeScale = 1.0; query.prePhonemeLength = 0.15; query.postPhonemeLength = 0.25;
-
-    const wav = await fetchWithTimeout(
-      `${VOICEVOX_URL}/synthesis?speaker=${speakerId}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(query) },
-      10000
-    ).then(r => r.blob());
-
-    const url = URL.createObjectURL(wav);
-    const audio = new Audio(url);
-    currentAudio = audio;
-    return new Promise((resolve, reject) => {
-      audio.onended = () => { currentAudio = null; URL.revokeObjectURL(url); resolve(); };
-      audio.onerror = () => { currentAudio = null; URL.revokeObjectURL(url); reject(); };
-      audio.play().catch(reject);
-    });
-  }
-
-  function speakFallback(text) {
-    return new Promise(resolve => {
+    await new Promise(resolve => {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'ja-JP'; u.rate = 0.82; u.pitch = 1.0; u.volume = 1.0;
@@ -557,23 +445,6 @@
       u.onend = resolve; u.onerror = resolve;
       window.speechSynthesis.speak(u);
     });
-  }
-
-  async function speakAnnouncement(patient, room, speakerId) {
-    const text = `${patient}番のかた、診察室${room}番に、おはいりください。`;
-    setStatus(`読み上げ中: 「${text}」`, 'speaking');
-    document.getElementById('announceBtn').disabled = true;
-
-    try {
-      const vvOk = await checkVoicevox();
-      if (vvOk) {
-        await speakVoicevox(text, speakerId);
-      } else {
-        await speakFallback(text);
-      }
-    } catch {
-      try { await speakFallback(text); } catch {}
-    }
 
     setStatus('案内完了');
     document.getElementById('announceBtn').disabled = false;
@@ -615,9 +486,6 @@
   document.getElementById('patientNumber').addEventListener('keydown', e => {
     if (e.key === 'Enter') announce();
   });
-
-  // 起動時 VOICEVOX 確認
-  checkVoicevox();
 </script>
 </body>
 </html>
