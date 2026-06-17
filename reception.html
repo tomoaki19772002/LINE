@@ -310,6 +310,7 @@
     </div>
     <button class="announce-btn" id="announceBtn" onclick="announce()">📢 案内する</button>
     <button class="repeat-btn" id="repeatBtn" onclick="repeatAnnounce()" disabled>🔁 もう一度</button>
+    <button class="announce-btn" id="infoBtn" onclick="announceInfo()" style="background:#7a5c9a;">📣 整理番号のご案内</button>
     <button class="clear-btn" onclick="clearDisplay()">現在ご案内していません</button>
     <div class="status" id="status">番号と診察室を選択してください</div>
   </div>
@@ -371,6 +372,27 @@
     if (lastPatient && lastRoom) {
       callRef.set({ patient: lastPatient, room: lastRoom, timestamp: Date.now() });
     }
+  }
+
+  async function announceInfo() {
+    document.getElementById('infoBtn').disabled = true;
+    setStatus('読み上げ中...', 'speaking');
+    await playChime();
+    await new Promise(resolve => {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance('診察室は、整理番号でお呼びします。番号をご確認ください。');
+      u.lang = 'ja-JP'; u.rate = 0.82; u.pitch = 1.0; u.volume = 1.0;
+      const voices = window.speechSynthesis.getVoices();
+      const ja = voices.find(v => v.name.includes('Nanami'))
+               || voices.find(v => v.name.includes('Haruka'))
+               || voices.find(v => v.name.includes('Kyoko'))
+               || voices.find(v => v.lang.startsWith('ja'));
+      if (ja) u.voice = ja;
+      u.onend = resolve; u.onerror = resolve;
+      window.speechSynthesis.speak(u);
+    });
+    setStatus('案内完了');
+    document.getElementById('infoBtn').disabled = false;
   }
 
   function clearDisplay() {
