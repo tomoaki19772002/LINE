@@ -147,6 +147,26 @@
     .call-btn:hover  { background: linear-gradient(135deg, #1976d2, #1565c0); box-shadow: 0 8px 24px rgba(21,101,192,0.5); }
     .call-btn:active { transform: scale(0.97); }
 
+    .pause-btn {
+      padding: 14px 48px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border: 2.5px solid #78909c;
+      border-radius: 60px;
+      background: #fff;
+      color: #546e7a;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .pause-btn:hover  { background: #eceff1; border-color: #546e7a; }
+    .pause-btn:active { transform: scale(0.97); }
+    .pause-btn.active {
+      background: #546e7a;
+      color: #fff;
+      border-color: #546e7a;
+    }
+
     /* ── 履歴パネル ── */
     .history-panel {
       background: #fff;
@@ -271,6 +291,7 @@
       <button class="num-btn" id="btnPlus">＋</button>
     </div>
     <button class="call-btn" id="callBtn">呼び出す</button>
+    <button class="pause-btn" id="pauseBtn">現在、案内しておりません</button>
   </div>
 
   <!-- 履歴 -->
@@ -301,6 +322,7 @@
     const db = firebase.database();
     const idouRef    = db.ref('idouYobidashi/current');
     const historyRef = db.ref('idouYobidashi/history');
+    const pauseRef   = db.ref('idouYobidashi/paused');
 
     // ── 状態 ────────────────────────────────────────────────────
     let inputNum = 1;
@@ -309,9 +331,11 @@
     // ── DOM ─────────────────────────────────────────────────────
     const currentNumberEl = document.getElementById('currentNumber');
     const currentSubEl    = document.getElementById('currentSub');
+    const currentLabelEl  = document.querySelector('.current-label');
     const inputNumberEl   = document.getElementById('inputNumber');
     const historyListEl   = document.getElementById('historyList');
     const historyEmptyEl  = document.getElementById('historyEmpty');
+    const pauseBtn        = document.getElementById('pauseBtn');
     const toastEl         = document.getElementById('toast');
 
     // ── ±ボタン ─────────────────────────────────────────────────
@@ -358,17 +382,20 @@
     let initialized = false;
     idouRef.on('value', snap => {
       const data = snap.val();
-      if (data && data.number) {
-        showCurrent(data.number);
-        // ページ読込後の新規呼び出しのみ音声再生（初回ロード時は鳴らさない）
-        if (initialized && data.timestamp > lastSeenTs) {
-          speak(data.number);
+      // 案内停止中は表示を上書きしない
+      pauseRef.once('value', pSnap => {
+        if (pSnap.val()) return;
+        if (data && data.number) {
+          showCurrent(data.number);
+          if (initialized && data.timestamp > lastSeenTs) {
+            speak(data.number);
+          }
+          lastSeenTs = data.timestamp || 0;
+        } else {
+          showCurrent(null);
         }
-        lastSeenTs = data.timestamp || 0;
-      } else {
-        showCurrent(null);
-      }
-      initialized = true;
+        initialized = true;
+      });
     });
 
     function showCurrent(num) {
@@ -428,6 +455,33 @@
     document.getElementById('clearBtn').addEventListener('click', () => {
       idouRef.set(null);
       historyRef.set([]);
+    });
+
+    // ── 案内停止ボタン ───────────────────────────────────────────
+    pauseBtn.addEventListener('click', () => {
+      pauseRef.once('value', snap => {
+        pauseRef.set(!snap.val());
+      });
+    });
+
+    // ── Firebase リアルタイム受信：案内停止状態 ──────────────────
+    pauseRef.on('value', snap => {
+      const paused = !!snap.val();
+      if (paused) {
+        pauseBtn.classList.add('active');
+        currentLabelEl.textContent = '';
+        currentNumberEl.textContent = '現在、案内しておりません';
+        currentNumberEl.className = 'current-number empty';
+        currentSubEl.textContent = '';
+      } else {
+        pauseBtn.classList.remove('active');
+        currentLabelEl.textContent = '現在呼び出し中';
+        // 現在番号を再描画
+        idouRef.once('value', snap2 => {
+          const data = snap2.val();
+          showCurrent(data && data.number ? data.number : null);
+        });
+      }
     });
 
     // ── 音声読み上げ ────────────────────────────────────────────
