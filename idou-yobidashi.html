@@ -367,6 +367,9 @@
       const num = inputNum;
       const ts  = Date.now();
 
+      // 案内停止を解除してから呼び出し
+      pauseRef.set(false);
+
       // 現在番号を保存（全端末がこれを受信して音声再生）
       idouRef.set({ number: num, timestamp: ts });
 
