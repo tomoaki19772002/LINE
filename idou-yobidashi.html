@@ -325,8 +325,10 @@
     const pauseRef   = db.ref('idouYobidashi/paused');
 
     // ── 状態 ────────────────────────────────────────────────────
-    let inputNum = 1;
-    let lastSeenTs = 0;  // ページ読込時点のtsを記録し、新規呼び出しのみ音声再生
+    let inputNum    = 1;
+    let isPaused    = false;
+    let lastSeenTs  = 0;
+    let pageLoadTs  = Date.now();
 
     // ── DOM ─────────────────────────────────────────────────────
     const currentNumberEl = document.getElementById('currentNumber');
@@ -379,23 +381,19 @@
     });
 
     // ── Firebase リアルタイム受信：現在番号（全端末で音声再生） ──
-    let initialized = false;
     idouRef.on('value', snap => {
       const data = snap.val();
-      // 案内停止中は表示を上書きしない
-      pauseRef.once('value', pSnap => {
-        if (pSnap.val()) return;
-        if (data && data.number) {
-          showCurrent(data.number);
-          if (initialized && data.timestamp > lastSeenTs) {
-            speak(data.number);
-          }
-          lastSeenTs = data.timestamp || 0;
-        } else {
-          showCurrent(null);
+      if (isPaused) return;
+      if (data && data.number) {
+        showCurrent(data.number);
+        const ts = data.timestamp || 0;
+        if (ts > pageLoadTs && ts > lastSeenTs) {
+          speak(data.number);
         }
-        initialized = true;
-      });
+        lastSeenTs = ts;
+      } else {
+        showCurrent(null);
+      }
     });
 
     function showCurrent(num) {
@@ -466,8 +464,8 @@
 
     // ── Firebase リアルタイム受信：案内停止状態 ──────────────────
     pauseRef.on('value', snap => {
-      const paused = !!snap.val();
-      if (paused) {
+      isPaused = !!snap.val();
+      if (isPaused) {
         pauseBtn.classList.add('active');
         currentLabelEl.textContent = '';
         currentNumberEl.textContent = '現在、案内しておりません';
@@ -476,7 +474,6 @@
       } else {
         pauseBtn.classList.remove('active');
         currentLabelEl.textContent = '現在呼び出し中';
-        // 現在番号を再描画
         idouRef.once('value', snap2 => {
           const data = snap2.val();
           showCurrent(data && data.number ? data.number : null);
