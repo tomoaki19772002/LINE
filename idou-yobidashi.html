@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>移動呼び出し | 川越あさひ眼科</title>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+      background: linear-gradient(135deg, #e8f4fd 0%, #d0e8f8 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px 48px;
+      gap: 28px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      color: #1565c0;
+      letter-spacing: 0.08em;
+      font-weight: bold;
+    }
+
+    /* ── 現在呼び出し中パネル ── */
+    .current-panel {
+      background: #1a3a5c;
+      border-radius: 24px;
+      padding: 48px 80px 56px;
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,60,140,0.25);
+      min-width: 480px;
+      max-width: 700px;
+      width: 100%;
+    }
+
+    .current-label {
+      color: #7eb8e8;
+      font-size: 1.3rem;
+      letter-spacing: 0.15em;
+      margin-bottom: 8px;
+    }
+
+    .current-number {
+      color: #fff;
+      font-size: 10rem;
+      font-weight: bold;
+      line-height: 1;
+      letter-spacing: 0.05em;
+      min-height: 1.1em;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+
+    .current-number.empty {
+      color: #3a5a7a;
+      font-size: 3.5rem;
+      line-height: 2.8;
+    }
+
+    .current-number.flash {
+      animation: numFlash 0.4s ease;
+    }
+
+    @keyframes numFlash {
+      0%   { transform: scale(1.08); opacity: 0.6; }
+      50%  { transform: scale(1.14); opacity: 1; }
+      100% { transform: scale(1);    opacity: 1; }
+    }
+
+    .current-sub {
+      color: #aad4f5;
+      font-size: 1.1rem;
+      margin-top: 16px;
+      letter-spacing: 0.1em;
+    }
+
+    /* ── 操作エリア ── */
+    .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .number-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .num-btn {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: none;
+      font-size: 2rem;
+      font-weight: bold;
+      cursor: pointer;
+      background: #1565c0;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(21,101,192,0.35);
+      transition: background 0.15s, transform 0.1s;
+      user-select: none;
+    }
+    .num-btn:active { transform: scale(0.93); }
+    .num-btn:hover  { background: #1976d2; }
+
+    .number-display {
+      font-size: 4rem;
+      font-weight: bold;
+      color: #1565c0;
+      width: 140px;
+      text-align: center;
+      letter-spacing: 0.05em;
+      border: none;
+      border-bottom: 3px solid #1565c0;
+      background: transparent;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .number-display::-webkit-outer-spin-button,
+    .number-display::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .number-display:focus { border-bottom-color: #0d47a1; }
+
+    .call-btn {
+      padding: 18px 60px;
+      font-size: 1.6rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 60px;
+      background: linear-gradient(135deg, #1565c0, #0d47a1);
+      color: #fff;
+      cursor: pointer;
+      letter-spacing: 0.12em;
+      box-shadow: 0 6px 20px rgba(21,101,192,0.4);
+      transition: background 0.15s, transform 0.1s, box-shadow 0.1s;
+    }
+    .call-btn:hover  { background: linear-gradient(135deg, #1976d2, #1565c0); box-shadow: 0 8px 24px rgba(21,101,192,0.5); }
+    .call-btn:active { transform: scale(0.97); }
+
+    /* ── 履歴パネル ── */
+    .history-panel {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 4px 20px rgba(0,60,140,0.12);
+      padding: 24px 32px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .history-title {
+      font-size: 1.05rem;
+      color: #1565c0;
+      font-weight: bold;
+      letter-spacing: 0.08em;
+    }
+
+    .clear-btn {
+      padding: 6px 18px;
+      font-size: 0.85rem;
+      border: 1.5px solid #b0bec5;
+      border-radius: 20px;
+      background: #fff;
+      color: #607d8b;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .clear-btn:hover { background: #eceff1; color: #37474f; }
+
+    .history-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-height: 48px;
+    }
+
+    .history-chip {
+      background: #e3f2fd;
+      color: #1565c0;
+      font-size: 1.3rem;
+      font-weight: bold;
+      padding: 8px 22px;
+      border-radius: 30px;
+      letter-spacing: 0.05em;
+    }
+
+    .history-empty {
+      color: #b0bec5;
+      font-size: 0.95rem;
+      align-self: center;
+    }
+
+    /* ── 通知トースト ── */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1a237e;
+      color: #fff;
+      padding: 14px 32px;
+      border-radius: 40px;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+      opacity: 0;
+      transition: transform 0.3s, opacity 0.3s;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 999;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>診察室前 移動呼び出し</h1>
+
+  <!-- 現在呼び出し中 -->
+  <div class="current-panel">
+    <div class="current-label">現在呼び出し中</div>
+    <div class="current-number empty" id="currentNumber">—</div>
+    <div class="current-sub" id="currentSub"></div>
+  </div>
+
+  <!-- 操作エリア -->
+  <div class="controls">
+    <div class="number-row">
+      <button class="num-btn" id="btnMinus">−</button>
+      <input class="number-display" type="number" id="inputNumber" value="1" min="1" max="100">
+      <button class="num-btn" id="btnPlus">＋</button>
+    </div>
+    <button class="call-btn" id="callBtn">呼び出す</button>
+  </div>
+
+  <!-- 履歴 -->
+  <div class="history-panel">
+    <div class="history-header">
+      <span class="history-title">呼び出し済み番号</span>
+      <button class="clear-btn" id="clearBtn">リセット</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <span class="history-empty" id="historyEmpty">まだ呼び出し履歴はありません</span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ── Firebase ────────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "AIzaSyAM1kw9lv5z9UO1vi5R5ecT7hcIMQQt_MM",
+      authDomain:        "kawagoeasahi-72e5d.firebaseapp.com",
+      databaseURL:       "https://kawagoeasahi-72e5d-default-rtdb.firebaseio.com",
+      projectId:         "kawagoeasahi-72e5d",
+      storageBucket:     "kawagoeasahi-72e5d.firebasestorage.app",
+      messagingSenderId: "351069837644",
+      appId:             "1:351069837644:web:da3a3c8e877aee299017e9"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const idouRef = db.ref('idouYobidashi');
+
+    // ── 状態 ────────────────────────────────────────────────────
+    let inputNum = 1;
+    let history  = [];   // 呼び出し済み番号の配列
+
+    // ── DOM ─────────────────────────────────────────────────────
+    const currentNumberEl = document.getElementById('currentNumber');
+    const currentSubEl    = document.getElementById('currentSub');
+    const inputNumberEl   = document.getElementById('inputNumber');
+    const historyListEl   = document.getElementById('historyList');
+    const historyEmptyEl  = document.getElementById('historyEmpty');
+    const toastEl         = document.getElementById('toast');
+
+    // ── ±ボタン ─────────────────────────────────────────────────
+    document.getElementById('btnMinus').addEventListener('click', () => {
+      if (inputNum > 1) { inputNum--; renderInput(); }
+    });
+    document.getElementById('btnPlus').addEventListener('click', () => {
+      if (inputNum < 100) { inputNum++; renderInput(); }
+    });
+
+    // テンキー・直接入力
+    inputNumberEl.addEventListener('input', () => {
+      let v = parseInt(inputNumberEl.value, 10);
+      if (isNaN(v) || v < 1) v = 1;
+      if (v > 100) v = 100;
+      inputNum = v;
+    });
+    inputNumberEl.addEventListener('blur', () => {
+      renderInput();
+    });
+    // Enterキーで呼び出し
+    inputNumberEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('callBtn').click();
+    });
+
+    function renderInput() {
+      inputNumberEl.value = inputNum;
+    }
+
+    // ── 呼び出しボタン ──────────────────────────────────────────
+    document.getElementById('callBtn').addEventListener('click', () => {
+      const num = inputNum;
+      idouRef.set({
+        number:    num,
+        timestamp: Date.now()
+      });
+      speak(num);
+      addHistory(num);
+      showToast(`${num}番を呼び出しました`);
+    });
+
+    // ── Firebase リアルタイム受信（表示画面側でも使える） ────────
+    idouRef.on('value', snap => {
+      const data = snap.val();
+      if (data && data.number) {
+        showCurrent(data.number);
+      } else {
+        showCurrent(null);
+      }
+    });
+
+    function showCurrent(num) {
+      if (num) {
+        currentNumberEl.textContent = num;
+        currentNumberEl.classList.remove('empty');
+        currentSubEl.textContent = `${num}番のかた、診察室前の待合いすにお移動ください`;
+        currentNumberEl.classList.remove('flash');
+        void currentNumberEl.offsetWidth;
+        currentNumberEl.classList.add('flash');
+      } else {
+        currentNumberEl.textContent = '—';
+        currentNumberEl.classList.add('empty');
+        currentSubEl.textContent = '';
+      }
+    }
+
+    // ── 履歴 ────────────────────────────────────────────────────
+    function addHistory(num) {
+      if (!history.includes(num)) history.push(num);
+      renderHistory();
+    }
+
+    function renderHistory() {
+      historyListEl.innerHTML = '';
+      if (history.length === 0) {
+        historyListEl.appendChild(historyEmptyEl);
+        historyEmptyEl.style.display = '';
+        return;
+      }
+      historyEmptyEl.style.display = 'none';
+      [...history].reverse().forEach(n => {
+        const chip = document.createElement('span');
+        chip.className = 'history-chip';
+        chip.textContent = `${n}番`;
+        historyListEl.appendChild(chip);
+      });
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      history = [];
+      renderHistory();
+      idouRef.set(null);
+      showCurrent(null);
+    });
+
+    // ── 音声読み上げ ────────────────────────────────────────────
+    function speak(num) {
+      if (!window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+
+      const text = `${num}番のかた、診察室前の待合いすに移動してください`;
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang  = 'ja-JP';
+      utter.rate  = 0.88;
+      utter.pitch = 1.0;
+
+      // 日本語音声を優先選択
+      const voices = window.speechSynthesis.getVoices();
+      const jaVoice = voices.find(v => v.lang === 'ja-JP');
+      if (jaVoice) utter.voice = jaVoice;
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    // 音声一覧が非同期で読み込まれる場合の対応
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = () => {};
+    }
+
+    // ── トースト ────────────────────────────────────────────────
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2800);
+    }
+
+    // 初期描画
+    renderInput();
+    renderHistory();
+  </script>
+</body>
+</html>

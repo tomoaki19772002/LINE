@@ -12,3 +12,5 @@ firebase.json
 .firebaserc
 waiting-time.html
 test_models.py
+
+.vercel

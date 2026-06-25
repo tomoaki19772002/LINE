@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お会計案内システム</title>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      color: #7a3c00;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+    }
+
+    /* ── 表示パネル ── */
+    .display-panel {
+      background: #3a1a00;
+      border-radius: 20px;
+      padding: 36px 80px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      min-width: 560px;
+    }
+
+    .display-panel .label {
+      color: #e8b07a;
+      font-size: 1.4rem;
+      margin-bottom: 4px;
+      letter-spacing: 0.15em;
+    }
+
+    .display-panel .current-number {
+      color: #fff;
+      font-size: 12rem;
+      font-weight: bold;
+      line-height: 1;
+      letter-spacing: 0.05em;
+      min-height: 1.1em;
+    }
+
+    .display-panel .current-number.empty {
+      color: #6a3a1a;
+      font-size: 2.5rem;
+      line-height: 4;
+    }
+
+    /* ── 待ち番号エリア ── */
+    .waiting-panel {
+      background: #fff;
+      border-radius: 16px;
+      padding: 18px 24px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      min-width: 560px;
+    }
+
+    .waiting-panel h2 {
+      font-size: 1rem;
+      color: #7a3c00;
+      margin-bottom: 12px;
+      letter-spacing: 0.05em;
+      border-bottom: 2px solid #f0d8c0;
+      padding-bottom: 8px;
+    }
+
+    .waiting-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-height: 48px;
+    }
+
+    .waiting-list .empty-msg {
+      color: #bbb;
+      font-size: 0.95rem;
+      align-self: center;
+    }
+
+    .waiting-tag {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff3e0;
+      border: 2px solid #e8a040;
+      border-radius: 32px;
+      padding: 10px 22px;
+      font-size: 2rem;
+      font-weight: bold;
+      color: #7a3c00;
+    }
+
+    .waiting-tag .done-btn {
+      background: #e8a040;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .waiting-tag .done-btn:hover { background: #c06010; }
+
+    /* ── 操作パネル ── */
+    .control-panel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px 24px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 420px;
+    }
+
+    .form-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .form-row label {
+      font-size: 0.9rem;
+      color: #444;
+      white-space: nowrap;
+      width: 80px;
+    }
+
+    .number-input-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .num-btn {
+      width: 44px; height: 44px;
+      font-size: 1.4rem; font-weight: bold;
+      border: 2px solid #e8a040;
+      border-radius: 8px;
+      background: #fff8f0;
+      color: #7a3c00;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .num-btn:hover  { background: #ffe0b0; }
+    .num-btn:active { background: #ffc880; }
+
+    input[type="number"] {
+      flex: 1;
+      padding: 8px 4px;
+      font-size: 1.1rem;
+      border: 2px solid #e8a040;
+      border-radius: 6px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus { border-color: #7a3c00; }
+
+    .call-btn {
+      padding: 12px;
+      font-size: 1.05rem;
+      font-weight: bold;
+      background: #c06010;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .call-btn:hover  { background: #a04800; }
+    .call-btn:active { transform: scale(0.98); }
+    .call-btn:disabled { background: #aaa; cursor: not-allowed; }
+
+    .info-btn {
+      padding: 11px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      background: #5a7a9a;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+      transition: background 0.2s;
+    }
+    .info-btn:hover { background: #4a6a8a; }
+    .info-btn:disabled { background: #aaa; cursor: not-allowed; }
+
+    .status {
+      text-align: center;
+      font-size: 0.82rem;
+      color: #666;
+      min-height: 1.2em;
+    }
+    .status.speaking { color: #c06010; font-weight: bold; }
+    .status.error    { color: #c0392b; }
+
+    /* ── 同期バッジ ── */
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #e8f4ea;
+      color: #2c8a5f;
+      margin-top: 10px;
+    }
+    .sync-badge.disconnected { background: #fff0e0; color: #a06000; }
+    .sync-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #2c8a5f;
+      animation: pulse 1.5s infinite;
+    }
+    .sync-badge.disconnected .sync-dot { background: #a06000; animation: none; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>お会計案内システム</h1>
+
+  <!-- 表示パネル -->
+  <div class="display-panel">
+    <div class="label">現在お呼びしている番号</div>
+    <div class="current-number empty" id="displayNumber">－</div>
+    <div id="syncBadge" class="sync-badge disconnected">
+      <div class="sync-dot"></div>
+      <span id="syncText">接続中...</span>
+    </div>
+  </div>
+
+  <!-- 待ち番号 -->
+  <div class="waiting-panel">
+    <h2>お呼びしたが、まだお会計が終わっていない番号</h2>
+    <div class="waiting-list" id="waitingList">
+      <span class="empty-msg">なし</span>
+    </div>
+  </div>
+
+  <!-- 操作パネル -->
+  <div class="control-panel">
+    <div class="form-row">
+      <label>番号</label>
+      <div class="number-input-wrap">
+        <button class="num-btn" onclick="stepNumber(-1)">－</button>
+        <input type="number" id="patientNumber" min="1" max="100" placeholder="1〜100" />
+        <button class="num-btn" onclick="stepNumber(1)">＋</button>
+      </div>
+    </div>
+
+    <button class="call-btn" id="callBtn" onclick="callKaikei()">
+      📢 お会計に呼ぶ
+    </button>
+
+    <button class="info-btn" id="infoBtn" onclick="announceInfo()">
+      📣 表示番号の方はお会計ができます
+    </button>
+
+    <div class="status" id="status">番号を入力して「お会計に呼ぶ」を押してください</div>
+  </div>
+
+<script>
+  // ── Firebase ──────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey:            "AIzaSyAM1kw9lv5z9UO1vi5R5ecT7hcIMQQt_MM",
+    authDomain:        "kawagoeasahi-72e5d.firebaseapp.com",
+    databaseURL:       "https://kawagoeasahi-72e5d-default-rtdb.firebaseio.com",
+    projectId:         "kawagoeasahi-72e5d",
+    storageBucket:     "kawagoeasahi-72e5d.firebasestorage.app",
+    messagingSenderId: "351069837644",
+    appId:             "1:351069837644:web:da3a3c8e877aee299017e9"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const kaikeiRef = db.ref('kaikei');
+
+  // ── ローカル状態 ──────────────────────────────────────────────
+  let prevTimestamp = null;
+
+  // ── ±ボタン ───────────────────────────────────────────────────
+  function stepNumber(delta) {
+    const input = document.getElementById('patientNumber');
+    const val = parseInt(input.value, 10) || 0;
+    input.value = Math.min(100, Math.max(1, val + delta));
+  }
+
+  // ── お会計呼び出し ────────────────────────────────────────────
+  function callKaikei() {
+    const num = parseInt(document.getElementById('patientNumber').value, 10);
+    if (!num || num < 1 || num > 100) {
+      setStatus('番号を1〜100で入力してください', 'error');
+      return;
+    }
+    kaikeiRef.transaction(data => {
+      const d = data || { current: null, waiting: [], timestamp: 0, infoTimestamp: 0 };
+      const waiting = Array.isArray(d.waiting) ? d.waiting.slice() : [];
+      // 現在呼んでいる番号を待ちリストへ移動（既存でなければ）
+      if (d.current && !waiting.includes(d.current)) {
+        waiting.push(d.current);
+      }
+      d.current = num;
+      d.waiting = waiting.filter(n => n !== num); // 同じ番号が待ちにあれば除く
+      d.timestamp = Date.now();
+      return d;
+    });
+  }
+
+  // ── お会計完了（待ちリストから削除）─────────────────────────
+  function completeKaikei(num) {
+    kaikeiRef.transaction(data => {
+      const d = data || { current: null, waiting: [], timestamp: 0, infoTimestamp: 0 };
+      d.waiting = (Array.isArray(d.waiting) ? d.waiting : []).filter(n => n !== num);
+      if (d.current === num) d.current = null;
+      // timestamp は変えない → リスナーが音声を再生しない
+      return d;
+    });
+  }
+
+  // ── 案内アナウンス ────────────────────────────────────────────
+  function announceInfo() {
+    kaikeiRef.transaction(data => {
+      const d = data || { current: null, waiting: [], timestamp: 0, infoTimestamp: 0 };
+      d.infoTimestamp = Date.now();
+      return d;
+    });
+  }
+
+  // ── Firebase リスナー ─────────────────────────────────────────
+  kaikeiRef.on('value', snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    const isNew = prevTimestamp !== null && data.timestamp !== prevTimestamp;
+    const isNewInfo = prevTimestamp !== null && data.infoTimestamp && data.infoTimestamp !== (window._prevInfoTs || 0);
+
+    // 初回または変化で表示更新
+    updateDisplay(data.current);
+    updateWaitingList(Array.isArray(data.waiting) ? data.waiting : []);
+
+    if (prevTimestamp === null) {
+      prevTimestamp = data.timestamp;
+      window._prevInfoTs = data.infoTimestamp || 0;
+      return;
+    }
+
+    if (isNew) {
+      prevTimestamp = data.timestamp;
+      if (data.current) {
+        speakKaikei(data.current);
+      }
+    }
+
+    if (isNewInfo) {
+      window._prevInfoTs = data.infoTimestamp;
+      speakInfoAnnounce(data.current, Array.isArray(data.waiting) ? data.waiting : []);
+    }
+  });
+
+  // ── 接続状態 ──────────────────────────────────────────────────
+  db.ref('.info/connected').on('value', snap => {
+    const badge = document.getElementById('syncBadge');
+    const text  = document.getElementById('syncText');
+    if (snap.val()) {
+      badge.classList.remove('disconnected');
+      text.textContent = '全端末同期中';
+    } else {
+      badge.classList.add('disconnected');
+      text.textContent = 'オフライン';
+    }
+  });
+
+  // ── 表示更新 ──────────────────────────────────────────────────
+  function updateDisplay(current) {
+    const el = document.getElementById('displayNumber');
+    if (current) {
+      el.classList.remove('empty');
+      el.textContent = current;
+    } else {
+      el.classList.add('empty');
+      el.textContent = '－';
+    }
+  }
+
+  function updateWaitingList(waiting) {
+    const list = document.getElementById('waitingList');
+    list.innerHTML = '';
+    if (waiting.length === 0) {
+      list.innerHTML = '<span class="empty-msg">なし</span>';
+      return;
+    }
+    waiting.slice().sort((a, b) => a - b).forEach(num => {
+      const tag = document.createElement('div');
+      tag.className = 'waiting-tag';
+      tag.innerHTML = `
+        <span>${num}番</span>
+        <button class="done-btn" title="お会計完了" onclick="completeKaikei(${num})">✓</button>
+      `;
+      list.appendChild(tag);
+    });
+  }
+
+  // ── 音声読み上げ ──────────────────────────────────────────────
+  function getJaVoice() {
+    const voices = window.speechSynthesis.getVoices();
+    return voices.find(v => v.name.includes('Nanami'))
+        || voices.find(v => v.name.includes('Haruka'))
+        || voices.find(v => v.name.includes('Kyoko'))
+        || voices.find(v => v.lang.startsWith('ja'))
+        || null;
+  }
+
+  function playChime() {
+    return new Promise(resolve => {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // お会計専用チャイム（他アプリのG5-C6-B5-E6と異なる音程：F5-A5-C6-F6 下降形）
+      const notes = [
+        { freq: 698, dur: 0.4 },
+        { freq: 880, dur: 0.4 },
+        { freq: 523, dur: 0.4 },
+        { freq: 698, dur: 0.6 },
+      ];
+      let time = ctx.currentTime;
+      notes.forEach(({ freq, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, time);
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.35, time + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
+        osc.start(time);
+        osc.stop(time + dur);
+        time += 0.22;
+      });
+      setTimeout(resolve, notes.length * 220 + 250);
+    });
+  }
+
+  async function speak(text) {
+    await new Promise(resolve => {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP'; u.rate = 0.82; u.pitch = 1.0; u.volume = 1.0;
+      const ja = getJaVoice();
+      if (ja) u.voice = ja;
+      u.onend = resolve; u.onerror = resolve;
+      window.speechSynthesis.speak(u);
+    });
+  }
+
+  async function speakKaikei(num) {
+    const text = `${num}番のかた、お会計のため受付までお越しください。`;
+    setStatus(`読み上げ中：「${text}」`, 'speaking');
+    document.getElementById('callBtn').disabled = true;
+    await playChime();
+    await speak(text);
+    setStatus('案内完了');
+    document.getElementById('callBtn').disabled = false;
+  }
+
+  async function speakInfoAnnounce(current, waiting) {
+    const all = [...(waiting || [])];
+    if (current && !all.includes(current)) all.unshift(current);
+    all.sort((a, b) => a - b);
+
+    let text;
+    if (all.length === 0) {
+      text = '表示されている番号のかたは、お会計ができます。受付までお越しください。';
+    } else if (all.length === 1) {
+      text = `${all[0]}番のかたは、お会計ができます。受付までお越しください。`;
+    } else {
+      const nums = all.join('番、') + '番';
+      text = `${nums}のかたは、お会計ができます。受付までお越しください。`;
+    }
+
+    setStatus(`読み上げ中：「${text}」`, 'speaking');
+    document.getElementById('infoBtn').disabled = true;
+    await playChime();
+    await speak(text);
+    setStatus('案内完了');
+    document.getElementById('infoBtn').disabled = false;
+  }
+
+  // ── ステータス ────────────────────────────────────────────────
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + type;
+  }
+
+  // ── Enterキー ─────────────────────────────────────────────────
+  document.getElementById('patientNumber').addEventListener('keydown', e => {
+    if (e.key === 'Enter') callKaikei();
+  });
+
+  // 音声リスト取得（Chrome対策）
+  window.speechSynthesis.onvoiceschanged = () => {};
+  window.speechSynthesis.getVoices();
+</script>
+</body>
+</html>
