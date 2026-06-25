@@ -278,11 +278,12 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const idouRef = db.ref('idouYobidashi');
+    const idouRef    = db.ref('idouYobidashi/current');
+    const historyRef = db.ref('idouYobidashi/history');
 
     // ── 状態 ────────────────────────────────────────────────────
     let inputNum = 1;
-    let history  = [];   // 呼び出し済み番号の配列
+    let lastSpokenTs = 0;  // 自端末の呼び出しのみ音声再生
 
     // ── DOM ─────────────────────────────────────────────────────
     const currentNumberEl = document.getElementById('currentNumber');
@@ -307,31 +308,34 @@
       if (v > 100) v = 100;
       inputNum = v;
     });
-    inputNumberEl.addEventListener('blur', () => {
-      renderInput();
-    });
-    // Enterキーで呼び出し
+    inputNumberEl.addEventListener('blur', () => { renderInput(); });
     inputNumberEl.addEventListener('keydown', e => {
       if (e.key === 'Enter') document.getElementById('callBtn').click();
     });
 
-    function renderInput() {
-      inputNumberEl.value = inputNum;
-    }
+    function renderInput() { inputNumberEl.value = inputNum; }
 
     // ── 呼び出しボタン ──────────────────────────────────────────
     document.getElementById('callBtn').addEventListener('click', () => {
       const num = inputNum;
-      idouRef.set({
-        number:    num,
-        timestamp: Date.now()
+      const ts  = Date.now();
+      lastSpokenTs = ts;
+
+      // 現在番号を保存
+      idouRef.set({ number: num, timestamp: ts });
+
+      // 履歴に追記（重複なし）
+      historyRef.once('value', snap => {
+        const arr = snap.val() || [];
+        if (!arr.includes(num)) arr.push(num);
+        historyRef.set(arr);
       });
+
       speak(num);
-      addHistory(num);
       showToast(`${num}番を呼び出しました`);
     });
 
-    // ── Firebase リアルタイム受信（表示画面側でも使える） ────────
+    // ── Firebase リアルタイム受信：現在番号 ──────────────────────
     idouRef.on('value', snap => {
       const data = snap.val();
       if (data && data.number) {
@@ -356,21 +360,21 @@
       }
     }
 
-    // ── 履歴 ────────────────────────────────────────────────────
-    function addHistory(num) {
-      if (!history.includes(num)) history.push(num);
-      renderHistory();
-    }
+    // ── Firebase リアルタイム受信：履歴 ─────────────────────────
+    historyRef.on('value', snap => {
+      const arr = snap.val() || [];
+      renderHistory(arr);
+    });
 
-    function renderHistory() {
+    function renderHistory(arr) {
       historyListEl.innerHTML = '';
-      if (history.length === 0) {
+      if (arr.length === 0) {
         historyListEl.appendChild(historyEmptyEl);
         historyEmptyEl.style.display = '';
         return;
       }
       historyEmptyEl.style.display = 'none';
-      [...history].reverse().forEach(n => {
+      [...arr].reverse().forEach(n => {
         const chip = document.createElement('span');
         chip.className = 'history-chip';
         chip.textContent = `${n}番`;
@@ -378,11 +382,10 @@
       });
     }
 
+    // ── リセット ─────────────────────────────────────────────────
     document.getElementById('clearBtn').addEventListener('click', () => {
-      history = [];
-      renderHistory();
       idouRef.set(null);
-      showCurrent(null);
+      historyRef.set([]);
     });
 
     // ── 音声読み上げ ────────────────────────────────────────────
