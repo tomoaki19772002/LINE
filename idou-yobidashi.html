@@ -529,7 +529,7 @@
       window.speechSynthesis.cancel();
 
       playChime().then(() => {
-        const text  = `${num}番のかた、診察室前の待合いすに移動してください`;
+        const text  = `${num}番のかた、検査室にお入りいただき、診察室前の、待合いすに移動してください`;
         const utter = new SpeechSynthesisUtterance(text);
         utter.lang  = 'ja-JP';
         utter.rate  = 0.88;
