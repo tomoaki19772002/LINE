@@ -528,7 +528,7 @@
       if (!window.speechSynthesis) return;
       window.speechSynthesis.cancel();
 
-      const text    = `${num}番のかた、検査室にお入りいただき、診察室前の、待合いすに移動してください`;
+      const text    = `${num}番のかた、診察室前のいすに、ご移動ください`;
       const voices  = window.speechSynthesis.getVoices();
       const jaVoice = voices.find(v => v.lang === 'ja-JP');
 
