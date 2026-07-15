@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LINE呼び出し | 川越あさひ眼科</title>
 
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -201,6 +204,77 @@
       font-size: 0.9rem;
       align-self: center;
     }
+
+    /* ── LINE登録中パネル ── */
+    .registered-panel {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 4px 20px rgba(0,60,140,0.12);
+      padding: 24px 32px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .registered-title {
+      font-size: 1.1rem;
+      color: #1565c0;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .registered-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      min-height: 40px;
+    }
+
+    .registered-chip {
+      border: 1.5px solid #90caf9;
+      background: #e3f2fd;
+      color: #1565c0;
+      font-size: 1.1rem;
+      font-weight: bold;
+      padding: 8px 18px;
+      border-radius: 24px;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .registered-chip:hover  { background: #bbdefb; }
+    .registered-chip:active { transform: scale(0.95); }
+
+    .registered-empty {
+      color: #b0bec5;
+      font-size: 0.9rem;
+      align-self: center;
+    }
+
+    /* ── 通知トースト ── */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1a237e;
+      color: #fff;
+      padding: 14px 32px;
+      border-radius: 40px;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+      opacity: 0;
+      transition: transform 0.3s, opacity 0.3s;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 999;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
@@ -220,6 +294,13 @@
     <div class="status-line" id="statusLine"></div>
   </div>
 
+  <div class="registered-panel">
+    <span class="registered-title">現在LINE登録中の番号</span>
+    <div class="registered-list" id="registeredList">
+      <span class="registered-empty" id="registeredEmpty">現在登録はありません</span>
+    </div>
+  </div>
+
   <div class="history-panel">
     <div class="history-header">
       <span class="history-title">送信履歴</span>
@@ -230,15 +311,36 @@
     </div>
   </div>
 
+  <div class="toast" id="toast"></div>
+
   <script>
+    // ── Firebase ────────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "AIzaSyAM1kw9lv5z9UO1vi5R5ecT7hcIMQQt_MM",
+      authDomain:        "kawagoeasahi-72e5d.firebaseapp.com",
+      databaseURL:       "https://kawagoeasahi-72e5d-default-rtdb.firebaseio.com",
+      projectId:         "kawagoeasahi-72e5d",
+      storageBucket:     "kawagoeasahi-72e5d.firebasestorage.app",
+      messagingSenderId: "351069837644",
+      appId:             "1:351069837644:web:da3a3c8e877aee299017e9"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const registrationsRef = db.ref('lineRegistrations');
+
     let inputNum = 1;
     const inputNumberEl  = document.getElementById('inputNumber');
     const callBtn        = document.getElementById('callBtn');
     const statusLineEl   = document.getElementById('statusLine');
     const historyListEl  = document.getElementById('historyList');
     const historyEmptyEl = document.getElementById('historyEmpty');
+    const registeredListEl  = document.getElementById('registeredList');
+    const registeredEmptyEl = document.getElementById('registeredEmpty');
+    const toastEl = document.getElementById('toast');
 
     let history = [];
+    let knownRegisteredNumbers = new Set();
+    let isFirstRegistrationSnapshot = true;
 
     document.getElementById('btnMinus').addEventListener('click', () => {
       if (inputNum > 1) { inputNum--; renderInput(); }
@@ -324,6 +426,54 @@
         chip.appendChild(del);
         historyListEl.appendChild(chip);
       });
+    }
+
+    // ── Firebase リアルタイム受信：LINE登録状況 ────────────────
+    registrationsRef.on('value', snap => {
+      const data = snap.val() || {};
+      const currentNumbers = Object.keys(data).map(Number).sort((a, b) => a - b);
+
+      if (!isFirstRegistrationSnapshot) {
+        currentNumbers.forEach(n => {
+          if (!knownRegisteredNumbers.has(n)) {
+            showToast(`${n}番が登録されました`);
+          }
+        });
+      }
+      isFirstRegistrationSnapshot = false;
+      knownRegisteredNumbers = new Set(currentNumbers);
+
+      renderRegistered(currentNumbers);
+    });
+
+    function renderRegistered(numbers) {
+      registeredListEl.innerHTML = '';
+      if (numbers.length === 0) {
+        registeredListEl.appendChild(registeredEmptyEl);
+        registeredEmptyEl.style.display = '';
+        return;
+      }
+      registeredEmptyEl.style.display = 'none';
+      numbers.forEach(n => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'registered-chip';
+        chip.textContent = `${n}番`;
+        chip.title = 'クリックで番号を入力欄にセット';
+        chip.addEventListener('click', () => {
+          inputNum = n;
+          renderInput();
+        });
+        registeredListEl.appendChild(chip);
+      });
+    }
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3200);
     }
 
     renderInput();
