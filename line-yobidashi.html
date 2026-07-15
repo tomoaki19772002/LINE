@@ -178,6 +178,24 @@
       color: #e65100;
     }
 
+    .history-chip-del {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.08);
+      color: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: background 0.15s;
+      flex-shrink: 0;
+    }
+    .history-chip-del:hover { background: rgba(0,0,0,0.18); }
+
     .history-empty {
       color: #b0bec5;
       font-size: 0.9rem;
@@ -264,7 +282,7 @@
         } else {
           setStatus(`${num}番はLINE未登録です`, 'unsent');
         }
-        history.unshift({ number: num, sent: !!data.sent });
+        history.unshift({ id: Date.now() + Math.random(), number: num, sent: !!data.sent });
         renderHistory();
       } catch (e) {
         setStatus('送信に失敗しました。通信環境を確認してください', 'error');
@@ -289,7 +307,21 @@
       history.forEach(item => {
         const chip = document.createElement('span');
         chip.className = 'history-chip' + (item.sent ? '' : ' unsent');
-        chip.textContent = `${item.number}番${item.sent ? '' : '（未登録）'}`;
+
+        const label = document.createElement('span');
+        label.textContent = `${item.number}番${item.sent ? '' : '（未登録）'}`;
+
+        const del = document.createElement('button');
+        del.className = 'history-chip-del';
+        del.textContent = '×';
+        del.title = `${item.number}番の履歴を削除`;
+        del.addEventListener('click', () => {
+          history = history.filter(h => h.id !== item.id);
+          renderHistory();
+        });
+
+        chip.appendChild(label);
+        chip.appendChild(del);
         historyListEl.appendChild(chip);
       });
     }
