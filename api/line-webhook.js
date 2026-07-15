@@ -30,7 +30,7 @@ async function replyMessage(replyToken, text) {
   });
 }
 
-async function handleEvent(event, db) {
+async function handleEvent(event) {
   if (event.type === 'follow') {
     await replyMessage(
       event.replyToken,
@@ -44,6 +44,7 @@ async function handleEvent(event, db) {
     const userId = event.source && event.source.userId;
 
     if (Number.isInteger(num) && num >= 1 && num <= 100 && userId) {
+      const db = getDb();
       await db.ref(`lineRegistrations/${num}`).set({ userId, timestamp: Date.now() });
       await replyMessage(event.replyToken, `${num}番で登録しました。呼び出しの際にLINEでお知らせします。`);
     } else {
@@ -67,9 +68,8 @@ const handler = async (req, res) => {
 
   const body = JSON.parse(rawBody.toString('utf8'));
   const events = body.events || [];
-  const db = getDb();
 
-  await Promise.all(events.map(event => handleEvent(event, db)));
+  await Promise.all(events.map(event => handleEvent(event)));
 
   res.status(200).json({ ok: true });
 };
