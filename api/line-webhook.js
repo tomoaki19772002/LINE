@@ -62,7 +62,14 @@ const handler = async (req, res) => {
   const rawBody = await readRawBody(req);
 
   if (!isValidSignature(rawBody, req.headers['x-line-signature'])) {
-    res.status(403).json({ error: 'invalid signature' });
+    res.status(403).json({
+      error: 'invalid signature',
+      debug: {
+        rawBodyLength: rawBody.length,
+        secretLength: (process.env.LINE_CHANNEL_SECRET || '').length,
+        secretIsSet: !!process.env.LINE_CHANNEL_SECRET
+      }
+    });
     return;
   }
 
