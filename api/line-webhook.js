@@ -23,15 +23,69 @@ function toHalfWidthDigits(text) {
   return text.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
 }
 
-async function replyMessage(replyToken, text) {
+const RESERVATION_URL = 'https://5.mfmb.jp/mobile/index.php?guid=ON&clinic_number=900618';
+const RESERVATION_NOTICE = '当院の予約専用サイトへ移動します。LINEと電話番号でログインすることも可能です。';
+
+const FAQ_LIST = [
+  {
+    label: '①診察医は選べますか？',
+    answer:
+      '①診察医は選べますか？\n\n受付時・検査時にお申し出頂ければ希望の医師での診察が原則受けられます。ただし、受診後間もない再診の場合状態の変化を確認する必要がある場合には前回診察医での診療を勧めさせて頂く場合があります。'
+  },
+  {
+    label: '②外出できますか？',
+    answer:
+      '②外出できますか？\n\n受付および検査まで終了している場合、診察までの待ち時間に外出することできます。LINEでの呼び出しになりますので登録が必要になります。'
+  },
+  {
+    label: '③自費診療はどんなものがありますか？',
+    answer:
+      '③自費診療はどんなものがありますか？\n\n近視進行抑制のリジュセアミニ・眼瞼下垂治療のアップニークミニ・多焦点眼内レンズの取り扱い・コンタクトレンズの取り扱い等があります。ご不明な点があればお電話か直接受付や医師にお聞きいただければと思います。'
+  }
+];
+
+async function replyMessages(replyToken, messages) {
   await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`
     },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] })
+    body: JSON.stringify({ replyToken, messages })
   });
+}
+
+async function replyMessage(replyToken, text) {
+  await replyMessages(replyToken, [{ type: 'text', text }]);
+}
+
+async function replyReservationGuide(replyToken) {
+  await replyMessages(replyToken, [{
+    type: 'template',
+    altText: RESERVATION_NOTICE,
+    template: {
+      type: 'buttons',
+      text: RESERVATION_NOTICE,
+      actions: [{ type: 'uri', label: '予約サイトへ移動', uri: RESERVATION_URL }]
+    }
+  }]);
+}
+
+async function replyFaqMenu(replyToken) {
+  await replyMessages(replyToken, [{
+    type: 'template',
+    altText: 'よくある質問',
+    template: {
+      type: 'buttons',
+      text: '気になる質問を選んでください',
+      actions: FAQ_LIST.map((item, i) => ({
+        type: 'postback',
+        label: item.label,
+        data: `faq=${i}`,
+        displayText: item.label
+      }))
+    }
+  }]);
 }
 
 async function handleEvent(event) {
@@ -43,8 +97,30 @@ async function handleEvent(event) {
     return;
   }
 
+  if (event.type === 'postback') {
+    const params = new URLSearchParams(event.postback.data);
+    const faqIndex = Number(params.get('faq'));
+    const faqItem = FAQ_LIST[faqIndex];
+    if (faqItem) {
+      await replyMessage(event.replyToken, faqItem.answer);
+    }
+    return;
+  }
+
   if (event.type === 'message' && event.message && event.message.type === 'text') {
-    const num = Number(toHalfWidthDigits(event.message.text.trim()));
+    const text = event.message.text.trim();
+
+    if (text === '予約') {
+      await replyReservationGuide(event.replyToken);
+      return;
+    }
+
+    if (text === 'よくある質問') {
+      await replyFaqMenu(event.replyToken);
+      return;
+    }
+
+    const num = Number(toHalfWidthDigits(text));
     const userId = event.source && event.source.userId;
 
     if (Number.isInteger(num) && num >= 1 && num <= 100 && userId) {
