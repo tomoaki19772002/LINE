@@ -26,6 +26,9 @@ function toHalfWidthDigits(text) {
 const RESERVATION_URL = 'https://5.mfmb.jp/mobile/index.php?guid=ON&clinic_number=900618';
 const RESERVATION_NOTICE = '当院の予約専用サイトへ移動します。LINEと電話番号でログインすることも可能です。';
 
+const INFO_NOTICE =
+  '患者様個別のお問い合わせは仕組み上、当院スタッフが見れない状態です。個別のお問い合わせは当院へ直接お電話いただきますようお願いいたします。\n☎059-327-5652';
+
 const FAQ_LIST = [
   {
     label: '①診察医は選べますか？',
@@ -117,6 +120,11 @@ async function handleEvent(event) {
 
     if (text === 'よくある質問') {
       await replyFaqMenu(event.replyToken);
+      return;
+    }
+
+    if (text === 'お知らせ') {
+      await replyMessage(event.replyToken, INFO_NOTICE);
       return;
     }
 
