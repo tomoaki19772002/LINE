@@ -543,19 +543,23 @@
   });
 
   // ── どこからでもテンキー入力で即入力 ────────────────────────
+  const patInput = document.getElementById('patientNumber');
+
+  // フォーカスが当たったら全選択（次のキー入力で即置き換え）
+  patInput.addEventListener('focus', () => {
+    setTimeout(() => patInput.select(), 0);
+  });
+
   document.addEventListener('keydown', e => {
-    const input = document.getElementById('patientNumber');
-    // 数字キー（通常・テンキー両対応）
-    const isDigit = (e.key >= '0' && e.key <= '9') || (e.code && e.code.startsWith('Numpad') && e.key >= '0' && e.key <= '9');
+    const isDigit = (e.key >= '0' && e.key <= '9') ||
+                    (e.code && e.code.startsWith('Numpad') && e.key >= '0' && e.key <= '9');
     if (!isDigit) return;
-    // 入力欄自身にフォーカス中はそのまま通常入力
-    if (document.activeElement === input) return;
-    // 他の入力欄・ボタン操作中は無視
+    if (document.activeElement === patInput) return;
     const tag = document.activeElement ? document.activeElement.tagName : '';
     if (tag === 'SELECT') return;
-    // 前の値をクリアして数字1桁目をセット・フォーカス
-    input.value = e.key;
-    input.focus();
+    // 前の値をクリアして1桁目をセット・フォーカス
+    patInput.value = e.key;
+    patInput.focus();
     e.preventDefault();
   });
 </script>
