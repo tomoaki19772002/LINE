@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>デジタル診察券 | 川越あさひ眼科</title>
+
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+      background: linear-gradient(135deg, #e8f4fd 0%, #d0e8f8 100%);
+      min-height: 100vh;
+      padding: 20px 16px 40px;
+      color: #263238;
+    }
+
+    .wrap { max-width: 420px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+    h1 { font-size: 1.2rem; color: #1565c0; text-align: center; letter-spacing: 0.06em; }
+
+    .message { text-align: center; color: #607d8b; padding: 40px 0; line-height: 1.7; }
+    .message.error { color: #c62828; }
+
+    /* ── 診察券 ── */
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,60,140,0.18);
+      overflow: hidden;
+    }
+    .card-head {
+      background: linear-gradient(135deg, #1565c0, #0d47a1);
+      color: #fff;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .card-clinic { font-weight: bold; letter-spacing: 0.06em; }
+    .card-kind { font-size: 0.8rem; opacity: 0.85; }
+    .card-body { padding: 22px 20px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .card-name { font-size: 1.3rem; font-weight: bold; }
+    .card-birth { font-size: 0.85rem; color: #78909c; }
+    .qr { padding: 12px; background: #fff; border: 1px solid #eceff1; border-radius: 12px; line-height: 0; }
+    .card-number-label { font-size: 0.75rem; color: #78909c; margin-top: 4px; }
+    .card-number { font-size: 2rem; font-weight: bold; letter-spacing: 0.12em; color: #1565c0; }
+    .hint { font-size: 0.75rem; color: #90a4ae; text-align: center; }
+
+    .switcher { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .chip {
+      border: 1.5px solid #90caf9; background: #fff; color: #1565c0;
+      border-radius: 20px; padding: 6px 16px; font-size: 0.9rem; font-weight: bold; cursor: pointer;
+    }
+    .chip.active { background: #1565c0; color: #fff; border-color: #1565c0; }
+
+    .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      border: none; border-radius: 24px; padding: 10px 22px;
+      font-size: 0.95rem; font-weight: bold; cursor: pointer;
+    }
+    .btn.primary { background: linear-gradient(135deg, #06c755, #05a648); color: #fff; }
+    .btn.ghost { background: #fff; color: #607d8b; border: 1.5px solid #b0bec5; }
+    .btn.danger { background: #fff; color: #c62828; border: 1.5px solid #ef9a9a; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+
+    /* ── 登録フォーム ── */
+    .form {
+      background: #fff; border-radius: 20px; padding: 22px 20px;
+      box-shadow: 0 4px 20px rgba(0,60,140,0.12);
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .form h2 { font-size: 1.05rem; color: #1565c0; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 0.85rem; font-weight: bold; color: #455a64; }
+    .field input {
+      font-size: 1.1rem; padding: 10px 12px; border: 1.5px solid #b0bec5;
+      border-radius: 10px; background: #fff; width: 100%;
+    }
+    .field input:focus { outline: none; border-color: #1565c0; }
+    .field small { font-size: 0.75rem; color: #90a4ae; }
+    .form-error { color: #c62828; font-size: 0.85rem; min-height: 1.2em; }
+    .privacy { font-size: 0.75rem; color: #78909c; line-height: 1.6; }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>デジタル診察券</h1>
+
+    <div class="message" id="loading">読み込み中...</div>
+    <div class="message error" id="fatal" hidden></div>
+
+    <!-- 診察券表示 -->
+    <div id="cardView" hidden>
+      <div class="switcher" id="switcher"></div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-head">
+          <span class="card-clinic">川越あさひ眼科</span>
+          <span class="card-kind">診察券</span>
+        </div>
+        <div class="card-body">
+          <div class="card-name" id="cardName"></div>
+          <div class="card-birth" id="cardBirth"></div>
+          <div class="qr" id="qr"></div>
+          <div class="card-number-label">診察券番号</div>
+          <div class="card-number" id="cardNumber"></div>
+          <div class="hint">受付でこの画面をご提示ください。<br>QRが読み取りにくい場合は画面の明るさを上げてください。</div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:16px">
+        <button class="btn ghost" id="addBtn">診察券を追加</button>
+        <button class="btn danger" id="deleteBtn">この診察券を削除</button>
+      </div>
+    </div>
+
+    <!-- 登録フォーム -->
+    <form class="form" id="form" hidden novalidate>
+      <h2 id="formTitle">診察券を登録</h2>
+      <div class="field">
+        <label for="fNumber">診察券番号</label>
+        <input id="fNumber" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="例：12345">
+        <small>お手元の診察券に記載の番号を入力してください</small>
+      </div>
+      <div class="field">
+        <label for="fName">お名前</label>
+        <input id="fName" autocomplete="name" maxlength="40" placeholder="例：川越 太郎">
+      </div>
+      <div class="field">
+        <label for="fBirth">生年月日</label>
+        <input id="fBirth" type="date" min="1900-01-01">
+      </div>
+      <div class="form-error" id="formError"></div>
+      <div class="actions">
+        <button type="submit" class="btn primary" id="saveBtn">登録する</button>
+        <button type="button" class="btn ghost" id="cancelBtn" hidden>キャンセル</button>
+      </div>
+      <p class="privacy">
+        入力された情報は、デジタル診察券の表示と受付での本人確認のためにのみ使用し、暗号化して保存します。
+        受付では、実際の診察券や保険証とあわせて内容を確認させていただく場合があります。
+      </p>
+    </form>
+  </div>
+
+  <script>
+    const el = id => document.getElementById(id);
+    let idToken = null;
+    let cards = [];
+    let selected = 0;
+    let qrInstance = null;
+
+    function show(name) {
+      ['loading', 'fatal', 'cardView', 'form'].forEach(id => { el(id).hidden = (id !== name); });
+    }
+
+    function fatal(msg) {
+      el('fatal').textContent = msg;
+      show('fatal');
+    }
+
+    async function api(method, query = '', body) {
+      const res = await fetch('/api/cards' + query, {
+        method,
+        headers: Object.assign(
+          { Authorization: 'Bearer ' + idToken },
+          body ? { 'Content-Type': 'application/json' } : {}
+        ),
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (res.status === 401) {
+        // IDトークンの期限切れ。再ログインして読み込み直す
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        throw new Error('relogin');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.error || 'error'), { status: res.status });
+      return data;
+    }
+
+    function renderCards() {
+      if (cards.length === 0) { openForm(false); return; }
+      if (selected >= cards.length) selected = cards.length - 1;
+      const card = cards[selected];
+
+      el('cardName').textContent = card.name + ' 様';
+      el('cardBirth').textContent = '生年月日 ' + card.birth.replace(/-/g, '/');
+      el('cardNumber').textContent = card.cardNumber;
+
+      el('qr').innerHTML = '';
+      qrInstance = new QRCode(el('qr'), {
+        text: card.cardNumber, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M
+      });
+
+      const sw = el('switcher');
+      sw.innerHTML = '';
+      if (cards.length > 1) {
+        cards.forEach((c, i) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'chip' + (i === selected ? ' active' : '');
+          b.textContent = c.name;
+          b.addEventListener('click', () => { selected = i; renderCards(); });
+          sw.appendChild(b);
+        });
+      }
+      show('cardView');
+    }
+
+    function openForm(canCancel) {
+      el('formTitle').textContent = cards.length === 0 ? '診察券を登録' : '診察券を追加';
+      el('fNumber').value = '';
+      el('fName').value = '';
+      el('fBirth').value = '';
+      el('formError').textContent = '';
+      el('cancelBtn').hidden = !canCancel;
+      show('form');
+    }
+
+    el('addBtn').addEventListener('click', () => openForm(true));
+    el('cancelBtn').addEventListener('click', renderCards);
+
+    el('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const payload = {
+        cardNumber: el('fNumber').value,
+        name: el('fName').value,
+        birth: el('fBirth').value
+      };
+      if (!payload.cardNumber.trim() || !payload.name.trim() || !payload.birth) {
+        el('formError').textContent = '3つの項目をすべて入力してください';
+        return;
+      }
+      el('saveBtn').disabled = true;
+      try {
+        const data = await api('POST', '', payload);
+        cards = data.cards;
+        selected = cards.findIndex(c => c.name === payload.name.trim()) >= 0
+          ? cards.findIndex(c => c.name === payload.name.trim()) : cards.length - 1;
+        renderCards();
+      } catch (err) {
+        if (err.message === 'relogin') return;
+        el('formError').textContent = err.message === 'too many cards'
+          ? '登録できる診察券は6枚までです'
+          : '入力内容をご確認ください（診察券番号は数字、生年月日は正しい日付）';
+      } finally {
+        el('saveBtn').disabled = false;
+      }
+    });
+
+    el('deleteBtn').addEventListener('click', async () => {
+      const card = cards[selected];
+      if (!confirm(card.name + ' 様の診察券（' + card.cardNumber + '）を削除しますか？')) return;
+      el('deleteBtn').disabled = true;
+      try {
+        const data = await api('DELETE', '?cardNumber=' + encodeURIComponent(card.cardNumber));
+        cards = data.cards;
+        selected = 0;
+        renderCards();
+      } catch (err) {
+        if (err.message !== 'relogin') alert('削除に失敗しました。通信環境をご確認ください');
+      } finally {
+        el('deleteBtn').disabled = false;
+      }
+    });
+
+    async function main() {
+      try {
+        const cfgRes = await fetch('/api/liff-config');
+        if (!cfgRes.ok) { fatal('現在ご利用いただけません。スタッフにお声がけください。'); return; }
+        const cfg = await cfgRes.json();
+
+        await liff.init({ liffId: cfg.liffId });
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+
+        idToken = liff.getIDToken();
+        if (!idToken) { fatal('LINEのログイン情報を取得できませんでした。LINEアプリから開き直してください。'); return; }
+
+        cards = (await api('GET')).cards;
+        renderCards();
+      } catch (err) {
+        if (err.message === 'relogin') return;
+        fatal('読み込みに失敗しました。通信環境をご確認のうえ、開き直してください。');
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
