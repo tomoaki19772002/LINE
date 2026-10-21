@@ -220,7 +220,7 @@
     if (busy || document.hidden) return;
     api('GET').then(applyState).catch(function (e) { setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; });
   }
-  setInterval(poll, 2000);
+  setInterval(poll, 5000);
   document.addEventListener('visibilitychange', poll);
 
   function copy(text, btn) {
