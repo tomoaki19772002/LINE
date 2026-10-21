@@ -47,7 +47,7 @@
 <header>
   <h1>診察券 読取リスト</h1>
   <button class="btn-main" id="camBtn">カメラで読取</button>
-  <button class="btn-danger" id="clearBtn">全部消す</button>
+  <button class="btn-danger" id="clearBtn">リセット</button>
 </header>
 <main>
   <div class="pdfbar">
@@ -210,7 +210,7 @@
 
   $('clearBtn').onclick = function () {
     if (!items.length) return;
-    if (confirm('読み込んだ番号をすべて消します。よろしいですか？')) { items = []; lastCode = ''; render(); $('inp').focus(); }
+    if (confirm('読取リストを空にして、番号の順番もリセットします。\n（読み込んだ予約PDFはそのまま残ります）\nよろしいですか？')) { items = []; lastCode = ''; render(); $('inp').focus(); }
   };
 
   var scanner = null;
