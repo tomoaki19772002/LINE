@@ -71,7 +71,12 @@ module.exports = async (req, res) => {
     const result = await ref.transaction(current => {
       const state = current ? decrypt(current) : { rev: 0, items: [], appt: null };
       valid = applyOp(state, body);
-      if (!valid) return; // 中止
+      if (!valid) {
+        // 初回は current が null(未取得)で呼ばれることがある。ここで中止すると
+        // 実データでの再試行が行われないため、空の状態を返してサーバー側と照合させる。
+        if (current === null) return encrypt(state);
+        return; // 実データに対して不正な操作なら中止
+      }
       state.rev += 1;
       return encrypt(state);
     });
