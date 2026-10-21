@@ -1,22 +1,11 @@
-const crypto = require('crypto');
 const { getDb } = require('./_firebase');
 const { encrypt, decrypt } = require('./_cardstore');
 
 // 読取リスト(診察券番号)と予約PDFの内容を、院内の複数端末で共有する。
-// Realtime Database は公開読み取りなので、必ず暗号化して保存する。
+// Realtime Database は公開読み取りなので、必ず暗号化して保存する。合言葉なし（URLを知っていれば誰でも操作可）。
 const STATE_PATH = 'scanSync/state';
 const MAX_ITEMS = 1000;
 const MAX_APPT = 2000;
-
-function digest(text) {
-  return crypto.createHash('sha256').update(String(text)).digest();
-}
-
-function authorized(req) {
-  const pass = process.env.SCAN_PASSCODE;
-  if (!pass) return null;
-  return crypto.timingSafeEqual(digest(req.headers['x-scan-pass'] || ''), digest(pass));
-}
 
 function cleanAppt(input) {
   if (!input || typeof input !== 'object') return null;
@@ -65,9 +54,6 @@ function applyOp(state, body) {
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  const ok = authorized(req);
-  if (ok === null) { res.status(503).json({ error: 'not configured' }); return; }
-  if (!ok) { res.status(401).json({ error: 'unauthorized' }); return; }
 
   const ref = getDb().ref(STATE_PATH);
 
