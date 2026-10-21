@@ -26,6 +26,8 @@
   li.empty { background: transparent; border: 1px dashed #cfd8dc; }
   li.new { animation: flash 1.2s; }
   @keyframes flash { from { background: #fff59d; } to { background: #fff; } }
+  .gone { flex: 1; color: #b0bec5; text-decoration: line-through; font-size: 18px; }
+  .restore { background: #fff8e1; color: #f57f17; font-weight: bold; white-space: nowrap; }
   .no { width: 26px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
   .num { flex: 1; font-size: 26px; font-weight: bold; letter-spacing: 1px; font-variant-numeric: tabular-nums; word-break: break-all; }
   .dup { font-size: 11px; background: #ffe0b2; color: #e65100; border-radius: 4px; padding: 1px 5px; margin-left: 6px; font-weight: normal; letter-spacing: 0; }
@@ -152,7 +154,16 @@
       var li = document.createElement('li');
       var no = document.createElement('span'); no.className = 'no'; no.textContent = (i + 1);
       li.appendChild(no);
-      if (v === null) { li.className = 'empty'; ol.appendChild(li); return; }
+      if (v === null) {
+        li.className = 'empty';
+        if (trash[i]) {
+          var g = document.createElement('span'); g.className = 'gone'; g.textContent = trash[i].code;
+          var rb = document.createElement('button'); rb.className = 'restore'; rb.textContent = '復活';
+          rb.onclick = function () { send({ op: 'restore', index: i }); };
+          li.appendChild(g); li.appendChild(rb);
+        }
+        ol.appendChild(li); return;
+      }
       live++;
       if (i === newIdx) li.className = 'new';
       var mk = document.createElement('span'); mk.className = 'marks';
@@ -189,7 +200,7 @@
 
 
   // ---- 端末間の同期（サーバー側で暗号化して保存）----
-  var marks = [];
+  var marks = [], trash = [];
   var MARK_LABELS = ['薬', '保', '糖', '他'];
   var rev = -1, busy = 0, pendingNew = false;
   function setSync(ok, text) { var el = $('sync'); el.textContent = text; el.style.color = ok ? '#2e7d32' : '#c62828'; }
@@ -206,7 +217,7 @@
   function applyState(st) {
     setSync(true, '同期中');
     if (st.unchanged) return;
-    rev = st.rev; items = st.items; marks = st.marks || []; appt = st.appt || {}; apptLoaded = !!st.appt;
+    rev = st.rev; items = st.items; marks = st.marks || []; trash = st.trash || []; appt = st.appt || {}; apptLoaded = !!st.appt;
     if (pendingNew) { newIdx = items.length - 1; }
     showPdfInfo(); render();
     if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }
