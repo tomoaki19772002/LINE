@@ -53,6 +53,7 @@
   <div class="pdfbar">
     <label>本日の予約PDFを読込<input type="file" id="pdfIn" accept="application/pdf" hidden></label>
     <span id="pdfInfo">予約PDF未読込</span>
+    <span id="sync" style="margin-left:auto">接続中…</span>
   </div>
   <div id="reader"></div>
   <div class="scanbox">
@@ -65,17 +66,11 @@
 </main>
 <script>
 (function () {
-  var KEY = 'scanList';
   var items = [];           // 読取順の配列。削除は null にして位置を保つ
-  try { items = JSON.parse(sessionStorage.getItem(KEY)) || []; } catch (e) {}
   var $ = function (id) { return document.getElementById(id); };
   var lastCode = '', lastAt = 0, newIdx = -1;
   // 予約データ: {正規化カルテ番号: {times:[], name}}  ※PDFは1日分のみ。新しく読込むと置き換え
   var appt = {}, apptLoaded = false;
-  try {
-    var saved = JSON.parse(localStorage.getItem('apptData'));
-    if (saved) { appt = saved.appt; apptLoaded = true; }
-  } catch (e) {}
   function norm(c) { return String(c).replace(/[^0-9]/g, '').replace(/^0+/, ''); }
   function showPdfInfo() {
     var el = $('pdfInfo');
@@ -130,14 +125,11 @@
     try {
       var r = await parsePdf(await f.arrayBuffer());
       if (!Object.keys(r.appt).length) throw new Error('予約が見つかりません');
-      appt = r.appt; apptLoaded = true;
-      try { localStorage.setItem('apptData', JSON.stringify({ appt: appt })); } catch (e) {}
-      showPdfInfo(); render(); $('msg').textContent = '予約PDFを読み込みました';
+      await send({ op: 'appt', appt: r.appt });
+      $('msg').textContent = '予約PDFを読み込みました（他の端末にも共有されます）';
     } catch (e) { $('msg').textContent = 'PDFを読み込めません: ' + e.message; }
     this.value = '';
   });
-
-  function save() { try { sessionStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} }
 
   function render() {
     var ol = $('list'); ol.innerHTML = '';
@@ -166,14 +158,60 @@
       var cb = document.createElement('button'); cb.className = 'copy'; cb.textContent = 'コピー';
       cb.onclick = function () { copy(v, cb); };
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
-      db.onclick = function () { items[i] = null; save(); newIdx = -1; render(); };
+      db.onclick = function () { send({ op: 'del', index: i }); };
       li.appendChild(num); li.appendChild(info); li.appendChild(cb); li.appendChild(db);
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';
     newIdx = -1;
-    save();
   }
+
+
+  // ---- 端末間の同期（サーバー側で暗号化して保存）----
+  var pass = '', rev = -1, busy = 0, asking = false, pendingNew = false;
+  try { pass = localStorage.getItem('scanPass') || ''; } catch (e) {}
+  function setSync(ok, text) { var el = $('sync'); el.textContent = text; el.style.color = ok ? '#2e7d32' : '#c62828'; }
+  function askPass() {
+    if (asking) return; asking = true;
+    var p = prompt('この端末の合言葉を入力してください（院内共通）');
+    asking = false;
+    if (p) { pass = p.trim(); try { localStorage.setItem('scanPass', pass); } catch (e) {} }
+  }
+  function api(method, body) {
+    if (!pass) return Promise.reject(new Error('合言葉が未入力です（右上の「未同期」をタップして入力）'));
+    return fetch('/api/scan-sync' + (method === 'GET' ? '?rev=' + rev : ''), {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'x-scan-pass': pass },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      if (r.status === 401) { pass = ''; try { localStorage.removeItem('scanPass'); } catch (e) {} setTimeout(function () { askPass(); poll(); }, 0); throw new Error('合言葉が違います'); }
+      if (r.status === 503) throw new Error('サーバー設定(SCAN_PASSCODE)が未設定です');
+      if (!r.ok) throw new Error('通信エラー ' + r.status);
+      return r.json();
+    });
+  }
+  function applyState(st) {
+    setSync(true, '同期中');
+    if (st.unchanged) return;
+    rev = st.rev; items = st.items; appt = st.appt || {}; apptLoaded = !!st.appt;
+    if (pendingNew) { newIdx = items.length - 1; }
+    showPdfInfo(); render();
+    if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }
+  }
+  function fail(e) { pendingNew = false; setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; }
+  function send(body) {
+    busy++;
+    return api('POST', body).then(applyState).catch(fail).then(function () { busy--; });
+  }
+  function poll() {
+    if (busy || document.hidden) return;
+    api('GET').then(applyState).catch(function (e) { setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; });
+  }
+  $('sync').style.cursor = 'pointer';
+  $('sync').onclick = function () { askPass(); poll(); };
+  if (!pass) askPass();
+  setInterval(poll, 2000);
+  document.addEventListener('visibilitychange', poll);
 
   function copy(text, btn) {
     function ok() {
@@ -196,11 +234,8 @@
     // カメラは同じコードを連続検出するので3秒間は無視
     if (fromCamera && code === lastCode && now - lastAt < 3000) { lastAt = now; return; }
     lastCode = code; lastAt = now;
-    items.push(code);          // 常に最下行へ追加（空きスペースは再利用しない）
-    newIdx = items.length - 1;
-    render();
-    $('msg').textContent = '読取: ' + code;
-    var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' });
+    pendingNew = true;         // サーバー側で常に最下行へ追加（空きスペースは再利用しない）
+    send({ op: 'add', code: code }).then(function () { $('msg').textContent = '読取: ' + code; });
   }
 
   $('inp').addEventListener('keydown', function (e) {
@@ -210,7 +245,7 @@
 
   $('clearBtn').onclick = function () {
     if (!items.length) return;
-    if (confirm('読取リストを空にして、番号の順番もリセットします。\n（読み込んだ予約PDFはそのまま残ります）\nよろしいですか？')) { items = []; lastCode = ''; render(); $('inp').focus(); }
+    if (confirm('読取リストを空にして、番号の順番もリセットします。\n（読み込んだ予約PDFはそのまま残ります）\nよろしいですか？')) { lastCode = ''; send({ op: 'reset' }); $('inp').focus(); }
   };
 
   var scanner = null;
@@ -230,6 +265,7 @@
 
   showPdfInfo();
   render();
+  poll();
   $('inp').focus();
   // バーコードリーダーはキー入力として届くので、他をクリックしても入力欄へ戻す
   document.addEventListener('click', function (e) {
