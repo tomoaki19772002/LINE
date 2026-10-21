@@ -26,7 +26,7 @@
   li.empty { background: transparent; border: 1px dashed #cfd8dc; }
   li.new { animation: flash 1.2s; }
   @keyframes flash { from { background: #fff59d; } to { background: #fff; } }
-  .no { width: 34px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
+  .no { width: 26px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
   .num { flex: 1; font-size: 26px; font-weight: bold; letter-spacing: 1px; font-variant-numeric: tabular-nums; word-break: break-all; }
   .dup { font-size: 11px; background: #ffe0b2; color: #e65100; border-radius: 4px; padding: 1px 5px; margin-left: 6px; font-weight: normal; letter-spacing: 0; }
   .copy { background: #e0f2f1; color: #00695c; font-weight: bold; }
@@ -40,6 +40,20 @@
   .pdfbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; color: #546e7a; flex-wrap: wrap; }
   .pdfbar label { background: #fff; border: 1px solid #00796b; color: #00796b; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: bold; }
   .pdfbar .warn { color: #c62828; font-weight: bold; }
+  .marks { display: grid; grid-template-columns: repeat(4, 28px); gap: 3px; flex: none; }
+  .mk { width: 28px; height: 34px; padding: 0; font-size: 14px; font-weight: bold; border-radius: 6px; border: 2px solid transparent; }
+  .mk0 { --c: #1e88e5; --l: #e3f2fd; } .mk1 { --c: #43a047; --l: #e8f5e9; }
+  .mk2 { --c: #fb8c00; --l: #fff3e0; } .mk3 { --c: #8e24aa; --l: #f3e5f5; }
+  .mk { background: var(--l); color: var(--c); opacity: .55; border-color: var(--l); }
+  .mk.on { background: var(--c); color: #fff; opacity: 1; border-color: var(--c); }
+  .copy, .del { white-space: nowrap; }
+  @media (max-width: 520px) {
+    li { flex-wrap: wrap; row-gap: 4px; }
+    .num { font-size: 22px; min-width: 110px; }
+    .copy, .del { padding: 8px 9px; }
+    .info { order: 9; flex-basis: 100%; text-align: left; padding-left: 34px; display: flex; gap: 10px; align-items: baseline; }
+    .info:empty { display: none; }
+  }
   #msg { min-height: 20px; font-size: 13px; color: #00796b; }
 </style>
 </head>
@@ -141,6 +155,13 @@
       if (v === null) { li.className = 'empty'; ol.appendChild(li); return; }
       live++;
       if (i === newIdx) li.className = 'new';
+      var mk = document.createElement('span'); mk.className = 'marks';
+      MARK_LABELS.forEach(function (label, f) {
+        var b = document.createElement('button'); b.className = 'mk mk' + f + ((marks[i] | 0) & (1 << f) ? ' on' : ''); b.textContent = label;
+        b.title = '預かり: ' + ['お薬手帳', '保険証', '健診結果', 'その他'][f];
+        b.onclick = function () { var on = !b.classList.contains('on'); b.classList.toggle('on', on); send({ op: 'mark', index: i, flag: f, on: on }); };
+        mk.appendChild(b);
+      });
       var num = document.createElement('span'); num.className = 'num'; num.textContent = v;
       if (items.indexOf(v) !== i) {
         var d = document.createElement('span'); d.className = 'dup'; d.textContent = '重複'; num.appendChild(d);
@@ -159,7 +180,7 @@
       cb.onclick = function () { copy(v, cb); };
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
       db.onclick = function () { send({ op: 'del', index: i }); };
-      li.appendChild(num); li.appendChild(info); li.appendChild(cb); li.appendChild(db);
+      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(cb); li.appendChild(db);
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';
@@ -168,6 +189,8 @@
 
 
   // ---- 端末間の同期（サーバー側で暗号化して保存）----
+  var marks = [];
+  var MARK_LABELS = ['薬', '保', '糖', '他'];
   var rev = -1, busy = 0, pendingNew = false;
   function setSync(ok, text) { var el = $('sync'); el.textContent = text; el.style.color = ok ? '#2e7d32' : '#c62828'; }
   function api(method, body) {
@@ -183,7 +206,7 @@
   function applyState(st) {
     setSync(true, '同期中');
     if (st.unchanged) return;
-    rev = st.rev; items = st.items; appt = st.appt || {}; apptLoaded = !!st.appt;
+    rev = st.rev; items = st.items; marks = st.marks || []; appt = st.appt || {}; apptLoaded = !!st.appt;
     if (pendingNew) { newIdx = items.length - 1; }
     showPdfInfo(); render();
     if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }

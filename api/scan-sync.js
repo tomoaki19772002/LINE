@@ -23,6 +23,12 @@ function cleanAppt(input) {
   return out;
 }
 
+// 古い保存データにも marks(預かり物の印: 薬=1 保=2 糖=4 他=8 のビット)を持たせる
+function normalize(state) {
+  if (!Array.isArray(state.marks)) state.marks = [];
+  return state;
+}
+
 // 操作を状態に適用する。不正なら false
 function applyOp(state, body) {
   switch (body.op) {
@@ -36,10 +42,20 @@ function applyOp(state, body) {
       const i = body.index;
       if (!Number.isInteger(i) || i < 0 || i >= state.items.length) return false;
       state.items[i] = null; // 削除した位置は空欄のまま残す
+      state.marks[i] = 0;
+      return true;
+    }
+    case 'mark': {
+      const i = body.index, f = body.flag;
+      if (!Number.isInteger(i) || i < 0 || i >= state.items.length || state.items[i] === null) return false;
+      if (!Number.isInteger(f) || f < 0 || f > 3 || typeof body.on !== 'boolean') return false;
+      const cur = state.marks[i] | 0;
+      state.marks[i] = body.on ? (cur | (1 << f)) : (cur & ~(1 << f));
       return true;
     }
     case 'reset':
       state.items = [];
+      state.marks = [];
       return true;
     case 'appt': {
       const appt = cleanAppt(body.appt);
@@ -59,7 +75,7 @@ module.exports = async (req, res) => {
 
   if (req.method === 'GET') {
     const record = (await ref.once('value')).val();
-    const state = record ? decrypt(record) : { rev: 0, items: [], appt: null };
+    const state = record ? normalize(decrypt(record)) : { rev: 0, items: [], marks: [], appt: null };
     if (String(state.rev) === String(req.query.rev)) { res.status(200).json({ unchanged: true, rev: state.rev }); return; }
     res.status(200).json(state);
     return;
@@ -69,7 +85,7 @@ module.exports = async (req, res) => {
     const body = req.body || {};
     let valid = true;
     const result = await ref.transaction(current => {
-      const state = current ? decrypt(current) : { rev: 0, items: [], appt: null };
+      const state = current ? normalize(decrypt(current)) : { rev: 0, items: [], marks: [], appt: null };
       valid = applyOp(state, body);
       if (!valid) {
         // 初回は current が null(未取得)で呼ばれることがある。ここで中止すると
