@@ -29,7 +29,7 @@
   .gone { flex: 1; color: #b0bec5; text-decoration: line-through; font-size: 18px; }
   .restore { background: #fff8e1; color: #f57f17; font-weight: bold; white-space: nowrap; }
   .no { width: 26px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
-  .num { flex: 1; font-size: 26px; font-weight: bold; letter-spacing: 1px; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .num { flex: 1 0 auto; min-width: 100px; font-size: 26px; font-weight: bold; letter-spacing: 1px; font-variant-numeric: tabular-nums; word-break: break-all; }
   .dup { font-size: 11px; background: #ffe0b2; color: #e65100; border-radius: 4px; padding: 1px 5px; margin-left: 6px; font-weight: normal; letter-spacing: 0; }
   .copy { background: #e0f2f1; color: #00695c; font-weight: bold; }
   .copy.done { background: #00796b; color: #fff; }
@@ -53,12 +53,18 @@
   .memo:focus { border-color: #00796b; outline: 0; }
   li.inf { background: #ffcdd2; border: 2px solid #e53935; }
   .infbadge { display: inline-block; background: #d32f2f; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin-top: 2px; }
+  .tm.hot { color: #d32f2f; font-weight: bold; }
+  .firstbadge { display: inline-block; background: #1565c0; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin: 2px 0 0 4px; }
+  .st { display: flex; gap: 3px; flex: none; }
+  .st .mk { width: auto; padding: 0 8px; font-size: 13px; }
+  .mk4 { --c: #546e7a; --l: #eceff1; } .mk5 { --c: #d81b60; --l: #fce4ec; }
   .copy, .del { white-space: nowrap; }
-  @media (max-width: 520px) {
+  @media (max-width: 880px) {
     li { flex-wrap: wrap; row-gap: 4px; }
     .num { font-size: 22px; min-width: 110px; }
     .copy, .del { padding: 8px 9px; }
     .memo { order: 10; flex-basis: 100%; }
+    .st { order: 11; padding-left: 34px; }
     .info { order: 9; flex-basis: 100%; text-align: left; padding-left: 34px; display: flex; gap: 10px; align-items: baseline; }
     .info:empty { display: none; }
   }
@@ -142,15 +148,20 @@
         if (!no) return;
         var key = norm(no.s);
         // 「マ」列に「感染」と書かれている患者（文字が折り返しても拾えるよう行の範囲を連結）
-        var inf = false;
-        if (cols.xMa !== null && cols.xSt !== null) {
-          var nx = ts[ts.indexOf(t) + 1], lo = nx ? nx.y + 4 : t.y - 60;
-          var cell = items.filter(function (i) { return i.x >= cols.xMa && i.x < cols.xSt && i.y <= t.y + 4 && i.y > lo; })
+        var nx = ts[ts.indexOf(t) + 1], lo = nx ? nx.y + 4 : t.y - 60;
+        function cellText(x0, x1) {
+          return items.filter(function (i) { return i.x >= x0 && i.x < x1 && i.y <= t.y + 4 && i.y > lo; })
             .sort(function (a, b) { return b.y - a.y || a.x - b.x; }).map(function (i) { return i.s; }).join('');
-          inf = cell.indexOf('感染') >= 0;
         }
-        if (!out[key]) out[key] = { times: [], name: name, inf: false };
-        if (inf) out[key].inf = true;
+        var why = [];
+        if (cols.xMa !== null && cols.xSt !== null && cellText(cols.xMa, cols.xSt).indexOf('感染') >= 0) why.push('感染');
+        var menu = cellText(cols.xMenu, cols.xMa !== null ? cols.xMa : xMenu + 140);
+        if (/EKC/i.test(menu)) why.push('EKC');
+        // メニューは長いと「再診（下記以外）,初...」のように省略表示されるので「,初」も初診扱い
+        var first = /初診|,初/.test(menu);
+        if (!out[key]) out[key] = { times: [], name: name, inf: false, infWhy: '', first: false };
+        if (why.length) { out[key].inf = true; out[key].infWhy = why.join('・'); }
+        if (first) out[key].first = true;
         if (out[key].times.indexOf(t.s) < 0) out[key].times.push(t.s);
       });
     }
@@ -167,6 +178,13 @@
     this.value = '';
   });
 
+  // 12:00〜14:00 と 18:00〜20:00 にスキャンした時刻は赤太字
+  function isBusy(t) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); if (!m) return false;
+    var x = +m[1] * 60 + +m[2];
+    return (x >= 720 && x <= 840) || (x >= 1080 && x <= 1200);
+  }
+
   function render() {
     // メモ入力中に他端末の更新で再描画されても、入力途中の文字とカーソルを保つ
     var ae = document.activeElement, keep = null;
@@ -178,6 +196,7 @@
       var no = document.createElement('span'); no.className = 'no'; no.textContent = (i + 1);
       li.appendChild(no);
       var tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = times[i] || '';
+      if (isBusy(times[i])) tm.classList.add('hot');
       if (v !== null && times[i]) li.appendChild(tm);
       if (v === null) {
         li.className = 'empty';
@@ -214,18 +233,28 @@
       }
       if (hit && hit.inf) {
         li.classList.add('inf');
-        var ib = document.createElement('span'); ib.className = 'infbadge'; ib.textContent = '感染';
+        var ib = document.createElement('span'); ib.className = 'infbadge'; ib.textContent = hit.infWhy || '感染';
         info.appendChild(ib);
+      }
+      if (hit && hit.first) {
+        var fb = document.createElement('span'); fb.className = 'firstbadge'; fb.textContent = '初診';
+        info.appendChild(fb);
       }
       var memo = document.createElement('input'); memo.className = 'memo'; memo.placeholder = 'メモ'; memo.maxLength = 200;
       memo.setAttribute('data-i', i); memo.value = memos[i] || '';
       memo.onchange = function () { if (memo.value !== (memos[i] || '')) send({ op: 'memo', index: i, text: memo.value }); };
       memo.onkeydown = function (e) { if (e.key === 'Enter') { memo.blur(); $('inp').focus(); } };
+      var st = document.createElement('span'); st.className = 'st';
+      [['変わりない', 4], ['よくなった', 5]].forEach(function (d) {
+        var b = document.createElement('button'); b.className = 'mk mk' + d[1] + ((marks[i] | 0) & (1 << d[1]) ? ' on' : ''); b.textContent = d[0];
+        b.onclick = function () { var on = !b.classList.contains('on'); b.classList.toggle('on', on); send({ op: 'mark', index: i, flag: d[1], on: on }); };
+        st.appendChild(b);
+      });
       var cb = document.createElement('button'); cb.className = 'copy'; cb.textContent = 'コピー';
       cb.onclick = function () { copy(v, cb); };
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
       db.onclick = function () { send({ op: 'del', index: i }); };
-      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); li.appendChild(cb); li.appendChild(db);
+      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); li.appendChild(st); li.appendChild(cb); li.appendChild(db);
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';

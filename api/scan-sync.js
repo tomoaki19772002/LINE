@@ -17,6 +17,8 @@ function cleanAppt(input) {
     if (!/^\d{1,12}$/.test(k) || !v || typeof v.name !== 'string' || !Array.isArray(v.times)) return null;
     out[k] = {
       inf: v.inf === true,
+      infWhy: typeof v.infWhy === 'string' ? v.infWhy.slice(0, 12) : '',
+      first: v.first === true,
       name: v.name.slice(0, 40),
       times: v.times.filter(t => typeof t === 'string').map(t => t.slice(0, 8)).slice(0, 10)
     };
@@ -24,7 +26,7 @@ function cleanAppt(input) {
   return out;
 }
 
-// 古い保存データにも marks(預かり物の印: 薬=1 保=2 糖=4 他=8 のビット)を持たせる
+// 古い保存データにも marks(印のビット: 薬=1 保=2 糖=4 他=8 変わりない=16 よくなった=32)を持たせる
 function normalize(state) {
   if (!Array.isArray(state.marks)) state.marks = [];
   if (!Array.isArray(state.times)) state.times = []; // スキャン時刻(日本時間 HH:mm)
@@ -80,7 +82,7 @@ function applyOp(state, body) {
     case 'mark': {
       const i = body.index, f = body.flag;
       if (!Number.isInteger(i) || i < 0 || i >= state.items.length || state.items[i] === null) return false;
-      if (!Number.isInteger(f) || f < 0 || f > 3 || typeof body.on !== 'boolean') return false;
+      if (!Number.isInteger(f) || f < 0 || f > 5 || typeof body.on !== 'boolean') return false;
       const cur = state.marks[i] | 0;
       state.marks[i] = body.on ? (cur | (1 << f)) : (cur & ~(1 << f));
       return true;
