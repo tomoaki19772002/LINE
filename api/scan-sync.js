@@ -16,6 +16,7 @@ function cleanAppt(input) {
     const v = input[k];
     if (!/^\d{1,12}$/.test(k) || !v || typeof v.name !== 'string' || !Array.isArray(v.times)) return null;
     out[k] = {
+      inf: v.inf === true,
       name: v.name.slice(0, 40),
       times: v.times.filter(t => typeof t === 'string').map(t => t.slice(0, 8)).slice(0, 10)
     };
@@ -26,9 +27,14 @@ function cleanAppt(input) {
 // 古い保存データにも marks(預かり物の印: 薬=1 保=2 糖=4 他=8 のビット)を持たせる
 function normalize(state) {
   if (!Array.isArray(state.marks)) state.marks = [];
-  if (!Array.isArray(state.trash)) state.trash = []; // 削除済みの番号(復活用): trash[i] = { code, mark }
+  if (!Array.isArray(state.times)) state.times = []; // スキャン時刻(日本時間 HH:mm)
+  if (!Array.isArray(state.memos)) state.memos = []; // 行ごとのメモ
+  if (!Array.isArray(state.trash)) state.trash = []; // 削除済みの番号(復活用): trash[i] = { code, mark, time, memo }
   return state;
 }
+
+const JST_TIME = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false });
+const MAX_MEMO = 200;
 
 // 操作を状態に適用する。不正なら false
 function applyOp(state, body) {
@@ -37,14 +43,20 @@ function applyOp(state, body) {
       const code = typeof body.code === 'string' ? body.code.trim() : '';
       if (!/^[\w-]{1,24}$/.test(code) || state.items.length >= MAX_ITEMS) return false;
       state.items.push(code);
+      const n = state.items.length - 1;
+      state.marks[n] = 0;
+      state.memos[n] = '';
+      state.times[n] = JST_TIME.format(new Date());
       return true;
     }
     case 'del': {
       const i = body.index;
       if (!Number.isInteger(i) || i < 0 || i >= state.items.length) return false;
-      state.trash[i] = { code: state.items[i], mark: state.marks[i] | 0 };
+      state.trash[i] = { code: state.items[i], mark: state.marks[i] | 0, time: state.times[i] || '', memo: state.memos[i] || '' };
       state.items[i] = null; // 削除した位置は空欄のまま残す
       state.marks[i] = 0;
+      state.memos[i] = '';
+      state.times[i] = '';
       return true;
     }
     case 'restore': {
@@ -53,7 +65,16 @@ function applyOp(state, body) {
       if (!Number.isInteger(i) || i < 0 || i >= state.items.length || state.items[i] !== null || !t) return false;
       state.items[i] = t.code;
       state.marks[i] = t.mark | 0;
+      state.times[i] = t.time || '';
+      state.memos[i] = t.memo || '';
       state.trash[i] = null;
+      return true;
+    }
+    case 'memo': {
+      const i = body.index;
+      if (!Number.isInteger(i) || i < 0 || i >= state.items.length || state.items[i] === null) return false;
+      if (typeof body.text !== 'string') return false;
+      state.memos[i] = body.text.slice(0, MAX_MEMO);
       return true;
     }
     case 'mark': {
@@ -67,6 +88,8 @@ function applyOp(state, body) {
     case 'reset':
       state.items = [];
       state.marks = [];
+      state.times = [];
+      state.memos = [];
       state.trash = [];
       return true;
     case 'appt': {
@@ -87,7 +110,7 @@ module.exports = async (req, res) => {
 
   if (req.method === 'GET') {
     const record = (await ref.once('value')).val();
-    const state = record ? normalize(decrypt(record)) : { rev: 0, items: [], marks: [], trash: [], appt: null };
+    const state = record ? normalize(decrypt(record)) : { rev: 0, items: [], marks: [], times: [], memos: [], trash: [], appt: null };
     if (String(state.rev) === String(req.query.rev)) { res.status(200).json({ unchanged: true, rev: state.rev }); return; }
     res.status(200).json(state);
     return;
@@ -97,7 +120,7 @@ module.exports = async (req, res) => {
     const body = req.body || {};
     let valid = true;
     const result = await ref.transaction(current => {
-      const state = current ? normalize(decrypt(current)) : { rev: 0, items: [], marks: [], trash: [], appt: null };
+      const state = current ? normalize(decrypt(current)) : { rev: 0, items: [], marks: [], times: [], memos: [], trash: [], appt: null };
       valid = applyOp(state, body);
       if (!valid) {
         // 初回は current が null(未取得)で呼ばれることがある。ここで中止すると

@@ -14,7 +14,7 @@
   button { font: inherit; cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; }
   .btn-main { background: #fff; color: #00796b; font-weight: bold; }
   .btn-danger { background: #c62828; color: #fff; }
-  main { max-width: 640px; margin: 0 auto; padding: 12px; }
+  main { max-width: 900px; margin: 0 auto; padding: 12px; }
   #reader { width: 100%; max-width: 360px; margin: 0 auto 8px; display: none; }
   .scanbox { display: flex; gap: 8px; margin-bottom: 8px; }
   .scanbox input { flex: 1; font-size: 18px; padding: 10px; border: 2px solid #b0bec5; border-radius: 8px; }
@@ -48,11 +48,17 @@
   .mk2 { --c: #fb8c00; --l: #fff3e0; } .mk3 { --c: #8e24aa; --l: #f3e5f5; }
   .mk { background: var(--l); color: var(--c); opacity: .55; border-color: var(--l); }
   .mk.on { background: var(--c); color: #fff; opacity: 1; border-color: var(--c); }
+  .tm { flex: none; width: 42px; font-size: 13px; color: #546e7a; font-variant-numeric: tabular-nums; }
+  .memo { flex: 1 1 150px; min-width: 90px; font: inherit; font-size: 15px; padding: 8px; border: 1px solid #cfd8dc; border-radius: 8px; }
+  .memo:focus { border-color: #00796b; outline: 0; }
+  li.inf { background: #ffcdd2; border: 2px solid #e53935; }
+  .infbadge { display: inline-block; background: #d32f2f; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin-top: 2px; }
   .copy, .del { white-space: nowrap; }
   @media (max-width: 520px) {
     li { flex-wrap: wrap; row-gap: 4px; }
     .num { font-size: 22px; min-width: 110px; }
     .copy, .del { padding: 8px 9px; }
+    .memo { order: 10; flex-basis: 100%; }
     .info { order: 9; flex-basis: 100%; text-align: left; padding-left: 34px; display: flex; gap: 10px; align-items: baseline; }
     .info:empty { display: none; }
   }
@@ -118,10 +124,15 @@
       var hName = items.find(function (i) { return i.s === 'なまえ'; });
       var hNo = items.find(function (i) { return i.s.indexOf('カルテNo') === 0; });
       var hMenu = items.find(function (i) { return i.s === '診療メニュー'; });
-      if (hName && hNo && hMenu) { cols = { xName: hName.x - 8, xNo: hNo.x - 4, xMenu: hMenu.x - 4, yHead: hName.y }; }
+      var hMa = items.find(function (i) { return i.s === 'マ'; });
+      var hState = items.find(function (i) { return i.s === '状態'; });
+      if (hName && hNo && hMenu) {
+        cols = { xName: hName.x - 8, xNo: hNo.x - 4, xMenu: hMenu.x - 4, xMa: hMa ? hMa.x - 6 : null, xSt: hState ? hState.x - 4 : null };
+      }
       if (!cols) continue;
       var xName = cols.xName, xNo = cols.xNo, xMenu = cols.xMenu;
       var times = items.filter(function (i) { return i.x < xName && /^\d{1,2}:\d{2}$/.test(i.s) && (!hName || i.y < hName.y - 5); });
+      var ts = times.slice().sort(function (a, b) { return b.y - a.y; });
       times.forEach(function (t) {
         var row = items.filter(function (i) { return Math.abs(i.y - t.y) < 4; });
         var name = row.filter(function (i) { return i.x >= xName && i.x < xNo; })
@@ -130,7 +141,16 @@
         var no = row.filter(function (i) { return i.x >= xNo && i.x < xMenu && /^\d+$/.test(i.s); })[0];
         if (!no) return;
         var key = norm(no.s);
-        if (!out[key]) out[key] = { times: [], name: name };
+        // 「マ」列に「感染」と書かれている患者（文字が折り返しても拾えるよう行の範囲を連結）
+        var inf = false;
+        if (cols.xMa !== null && cols.xSt !== null) {
+          var nx = ts[ts.indexOf(t) + 1], lo = nx ? nx.y + 4 : t.y - 60;
+          var cell = items.filter(function (i) { return i.x >= cols.xMa && i.x < cols.xSt && i.y <= t.y + 4 && i.y > lo; })
+            .sort(function (a, b) { return b.y - a.y || a.x - b.x; }).map(function (i) { return i.s; }).join('');
+          inf = cell.indexOf('感染') >= 0;
+        }
+        if (!out[key]) out[key] = { times: [], name: name, inf: false };
+        if (inf) out[key].inf = true;
         if (out[key].times.indexOf(t.s) < 0) out[key].times.push(t.s);
       });
     }
@@ -148,12 +168,17 @@
   });
 
   function render() {
+    // メモ入力中に他端末の更新で再描画されても、入力途中の文字とカーソルを保つ
+    var ae = document.activeElement, keep = null;
+    if (ae && ae.classList && ae.classList.contains('memo')) keep = { i: ae.getAttribute('data-i'), v: ae.value, pos: ae.selectionStart };
     var ol = $('list'); ol.innerHTML = '';
     var live = 0;
     items.forEach(function (v, i) {
       var li = document.createElement('li');
       var no = document.createElement('span'); no.className = 'no'; no.textContent = (i + 1);
       li.appendChild(no);
+      var tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = times[i] || '';
+      if (v !== null && times[i]) li.appendChild(tm);
       if (v === null) {
         li.className = 'empty';
         if (trash[i]) {
@@ -187,20 +212,33 @@
       } else if (apptLoaded) {
         info.innerHTML = '<span class="out">予約外</span>'; li.classList.add('gai');
       }
+      if (hit && hit.inf) {
+        li.classList.add('inf');
+        var ib = document.createElement('span'); ib.className = 'infbadge'; ib.textContent = '感染';
+        info.appendChild(ib);
+      }
+      var memo = document.createElement('input'); memo.className = 'memo'; memo.placeholder = 'メモ'; memo.maxLength = 200;
+      memo.setAttribute('data-i', i); memo.value = memos[i] || '';
+      memo.onchange = function () { if (memo.value !== (memos[i] || '')) send({ op: 'memo', index: i, text: memo.value }); };
+      memo.onkeydown = function (e) { if (e.key === 'Enter') { memo.blur(); $('inp').focus(); } };
       var cb = document.createElement('button'); cb.className = 'copy'; cb.textContent = 'コピー';
       cb.onclick = function () { copy(v, cb); };
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
       db.onclick = function () { send({ op: 'del', index: i }); };
-      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(cb); li.appendChild(db);
+      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); li.appendChild(cb); li.appendChild(db);
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';
     newIdx = -1;
+    if (keep) {
+      var again = ol.querySelector('.memo[data-i="' + keep.i + '"]');
+      if (again) { again.value = keep.v; again.focus(); try { again.setSelectionRange(keep.pos, keep.pos); } catch (e) {} }
+    }
   }
 
 
   // ---- 端末間の同期（サーバー側で暗号化して保存）----
-  var marks = [], trash = [];
+  var marks = [], trash = [], times = [], memos = [];
   var MARK_LABELS = ['薬', '保', '糖', '他'];
   var rev = -1, busy = 0, pendingNew = false;
   function setSync(ok, text) { var el = $('sync'); el.textContent = text; el.style.color = ok ? '#2e7d32' : '#c62828'; }
@@ -217,7 +255,7 @@
   function applyState(st) {
     setSync(true, '同期中');
     if (st.unchanged) return;
-    rev = st.rev; items = st.items; marks = st.marks || []; trash = st.trash || []; appt = st.appt || {}; apptLoaded = !!st.appt;
+    rev = st.rev; items = st.items; marks = st.marks || []; trash = st.trash || []; times = st.times || []; memos = st.memos || []; appt = st.appt || {}; apptLoaded = !!st.appt;
     if (pendingNew) { newIdx = items.length - 1; }
     showPdfInfo(); render();
     if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }
