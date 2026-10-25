@@ -6,6 +6,10 @@ const { encrypt, decrypt } = require('./_cardstore');
 const STATE_PATH = 'scanSync/state';
 const MAX_ITEMS = 1000;
 const MAX_APPT = 2000;
+const HISTORY_PATH = 'scanSync/history';
+const HISTORY_SLOTS = 300; // 直近300操作ぶんを循環して保存（rev % 300 の位置に上書き）
+const LIST_LIMIT = 60;
+const SNAP_FIELDS = ['items', 'marks', 'times', 'memos', 'trash']; // 予約PDFは含めない(復元しても今のPDFを保つ)
 
 function cleanAppt(input) {
   if (!input || typeof input !== 'object') return null;
@@ -94,6 +98,12 @@ function applyOp(state, body) {
       state.memos = [];
       state.trash = [];
       return true;
+    case 'rollback': {
+      const snap = body._snap;
+      if (!snap) return false;
+      SNAP_FIELDS.forEach(k => { state[k] = Array.isArray(snap[k]) ? snap[k] : []; });
+      return true;
+    }
     case 'appt': {
       const appt = cleanAppt(body.appt);
       if (!appt) return false;
@@ -108,7 +118,17 @@ function applyOp(state, body) {
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
 
-  const ref = getDb().ref(STATE_PATH);
+  const db = getDb();
+  const ref = db.ref(STATE_PATH);
+
+  if (req.method === 'GET' && req.query.history) {
+    // 履歴の一覧（操作の種類・時刻・件数だけ。中身は暗号化されたまま）
+    const all = (await db.ref(HISTORY_PATH).once('value')).val() || {};
+    const list = Object.values(all).map(e => ({ rev: e.rev, t: e.t, op: e.op, n: e.n }))
+      .sort((a, b) => b.rev - a.rev).slice(0, LIST_LIMIT);
+    res.status(200).json(list);
+    return;
+  }
 
   if (req.method === 'GET') {
     const record = (await ref.once('value')).val();
@@ -120,6 +140,13 @@ module.exports = async (req, res) => {
 
   if (req.method === 'POST') {
     const body = req.body || {};
+    if (body.op === 'rollback') {
+      // 履歴の該当時点を読み、その内容に戻す（操作自体も新しい履歴として残る）
+      const rev = body.rev;
+      const entry = Number.isInteger(rev) ? (await db.ref(`${HISTORY_PATH}/${rev % HISTORY_SLOTS}`).once('value')).val() : null;
+      if (!entry || entry.rev !== rev) { res.status(404).json({ error: 'history not found' }); return; }
+      body._snap = decrypt(entry.data);
+    }
     let valid = true;
     const result = await ref.transaction(current => {
       const state = current ? normalize(decrypt(current)) : { rev: 0, items: [], marks: [], times: [], memos: [], trash: [], appt: null };
@@ -134,7 +161,16 @@ module.exports = async (req, res) => {
       return encrypt(state);
     });
     if (!valid || !result.committed) { res.status(400).json({ error: 'invalid operation' }); return; }
-    res.status(200).json(decrypt(result.snapshot.val()));
+    const next = decrypt(result.snapshot.val());
+    // 履歴を残す（失敗しても本処理は成功扱い）
+    try {
+      const snap = {};
+      SNAP_FIELDS.forEach(k => { snap[k] = next[k]; });
+      await db.ref(`${HISTORY_PATH}/${next.rev % HISTORY_SLOTS}`).set({
+        rev: next.rev, t: Date.now(), op: body.op, n: next.items.filter(v => v !== null).length, data: encrypt(snap)
+      });
+    } catch (e) { console.error('history write failed', e); }
+    res.status(200).json(next);
     return;
   }
 

@@ -53,6 +53,15 @@
   .memo:focus { border-color: #00796b; outline: 0; }
   li.inf { background: #ffcdd2; border: 2px solid #e53935; }
   .infbadge { display: inline-block; background: #d32f2f; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin-top: 2px; }
+  .histbtn { background: #fff; border: 1px solid #90a4ae; color: #455a64; padding: 6px 12px; font-size: 13px; }
+  #hist { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10; }
+  #hist .box { background: #fff; max-width: 560px; margin: 5vh auto; max-height: 85vh; overflow: auto; border-radius: 12px; padding: 14px; }
+  #hist h2 { font-size: 16px; margin: 0 0 4px; }
+  #hist p { font-size: 12px; color: #607d8b; margin: 0 0 8px; }
+  #hist .hrow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid #eceff1; font-size: 14px; }
+  #hist .hrow .ht { width: 72px; color: #546e7a; font-variant-numeric: tabular-nums; }
+  #hist .hrow .ho { flex: 1; } #hist .hrow .ho.reset { color: #c62828; font-weight: bold; }
+  #hist .hrow button { background: #e0f2f1; color: #00695c; padding: 5px 10px; font-weight: bold; }
   .tm.hot { color: #d32f2f; font-weight: bold; }
   .firstbadge { display: inline-block; background: #1565c0; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin: 2px 0 0 4px; }
   .st { display: flex; gap: 3px; flex: none; }
@@ -81,6 +90,7 @@
   <div class="pdfbar">
     <label>本日の予約PDFを読込<input type="file" id="pdfIn" accept="application/pdf" hidden></label>
     <span id="pdfInfo">予約PDF未読込</span>
+    <button id="histBtn" class="histbtn">履歴</button>
     <span id="sync" style="margin-left:auto">接続中…</span>
   </div>
   <div id="reader"></div>
@@ -92,6 +102,12 @@
   <div class="bar"><span id="count"></span><span>番号をタップでコピー</span></div>
   <ol id="list"></ol>
 </main>
+<div id="hist"><div class="box">
+  <h2>操作の履歴（直近の操作ぶん）</h2>
+  <p>「復元」を押すと、その操作が終わった時点の読取リスト・印・メモに戻ります（予約PDFはそのまま）。消えた直前の行を選んでください。</p>
+  <div id="histList">読み込み中…</div>
+  <div style="text-align:right;margin-top:8px"><button class="histbtn" id="histClose">閉じる</button></div>
+</div></div>
 <script>
 (function () {
   var items = [];           // 読取順の配列。削除は null にして位置を保つ
@@ -269,10 +285,10 @@
   // ---- 端末間の同期（サーバー側で暗号化して保存）----
   var marks = [], trash = [], times = [], memos = [];
   var MARK_LABELS = ['薬', '保', '糖', '他'];
-  var rev = -1, busy = 0, pendingNew = false;
+  var rev = -1, busy = 0, pendingNew = false, resetByMe = false;
   function setSync(ok, text) { var el = $('sync'); el.textContent = text; el.style.color = ok ? '#2e7d32' : '#c62828'; }
-  function api(method, body) {
-    return fetch('/api/scan-sync' + (method === 'GET' ? '?rev=' + rev : ''), {
+  function api(method, body, query) {
+    return fetch('/api/scan-sync' + (query || (method === 'GET' ? '?rev=' + rev : '')), {
       method: method,
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
@@ -284,11 +300,39 @@
   function applyState(st) {
     setSync(true, '同期中');
     if (st.unchanged) return;
+    var before = items.filter(function (v) { return v !== null; }).length;
+    var after = (st.items || []).filter(function (v) { return v !== null; }).length;
+    if (before > 0 && after === 0 && !resetByMe) $('msg').textContent = '⚠ 共有データが空になりました。「履歴」から直前の状態に復元できます';
+    resetByMe = false;
     rev = st.rev; items = st.items; marks = st.marks || []; trash = st.trash || []; times = st.times || []; memos = st.memos || []; appt = st.appt || {}; apptLoaded = !!st.appt;
     if (pendingNew) { newIdx = items.length - 1; }
     showPdfInfo(); render();
     if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }
   }
+  var OP_LABEL = { add: '番号追加', del: '削除', restore: '復活', mark: '印の変更', memo: 'メモ', reset: 'リセット', appt: '予約PDF読込', rollback: '履歴から復元' };
+  function hm(t) { return new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }); }
+  $('histBtn').onclick = function () {
+    $('hist').style.display = 'block'; var box = $('histList'); box.textContent = '読み込み中…';
+    api('GET', null, '?history=1').then(function (list) {
+      box.innerHTML = '';
+      if (!list.length) { box.textContent = '履歴はまだありません'; return; }
+      list.forEach(function (e) {
+        var r = document.createElement('div'); r.className = 'hrow';
+        r.innerHTML = '<span class="ht"></span><span class="ho"></span><span class="hn"></span>';
+        r.children[0].textContent = hm(e.t);
+        r.children[1].textContent = OP_LABEL[e.op] || e.op; if (e.op === 'reset') r.children[1].classList.add('reset');
+        r.children[2].textContent = e.n + '件';
+        var b = document.createElement('button'); b.textContent = '復元';
+        b.onclick = function () {
+          if (!confirm(hm(e.t) + ' の時点（' + e.n + '件）に戻します。現在の内容は置き換わります（この操作も履歴に残ります）。よろしいですか？')) return;
+          $('hist').style.display = 'none'; send({ op: 'rollback', rev: e.rev }).then(function () { $('msg').textContent = '履歴から復元しました'; });
+        };
+        r.appendChild(b); box.appendChild(r);
+      });
+    }).catch(function (e) { box.textContent = '履歴を読み込めません: ' + e.message; });
+  };
+  $('histClose').onclick = function () { $('hist').style.display = 'none'; };
+
   function fail(e) { pendingNew = false; setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; }
   function send(body) {
     busy++;
@@ -333,7 +377,7 @@
 
   $('clearBtn').onclick = function () {
     if (!items.length) return;
-    if (confirm('読取リストを空にして、番号の順番もリセットします。\n（読み込んだ予約PDFはそのまま残ります）\nよろしいですか？')) { lastCode = ''; send({ op: 'reset' }); $('inp').focus(); }
+    if (confirm('読取リストを空にして、番号の順番もリセットします。\n（読み込んだ予約PDFはそのまま残ります）\nよろしいですか？')) { lastCode = ''; resetByMe = true; send({ op: 'reset' }); $('inp').focus(); }
   };
 
   var scanner = null;
