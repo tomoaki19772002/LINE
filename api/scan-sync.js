@@ -98,6 +98,19 @@ function applyOp(state, body) {
       state.memos = [];
       state.trash = [];
       return true;
+    case 'move': {
+      // from の行を to の位置へ移動（空欄の行も含め、並び全体が1つずつずれる）
+      const n = state.items.length, a = body.from, b = body.to;
+      if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0 || a >= n || b >= n || a === b) return false;
+      const fill = { items: null, marks: 0, times: '', memos: '', trash: null };
+      Object.keys(fill).forEach(k => {
+        const arr = state[k];
+        while (arr.length < n) arr.push(fill[k]);
+        arr.length = n;
+        arr.splice(b, 0, arr.splice(a, 1)[0]);
+      });
+      return true;
+    }
     case 'rollback': {
       const snap = body._snap;
       if (!snap) return false;

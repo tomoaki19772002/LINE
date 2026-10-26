@@ -62,6 +62,9 @@
   #hist .hrow .ht { width: 72px; color: #546e7a; font-variant-numeric: tabular-nums; }
   #hist .hrow .ho { flex: 1; } #hist .hrow .ho.reset { color: #c62828; font-weight: bold; }
   #hist .hrow button { background: #e0f2f1; color: #00695c; padding: 5px 10px; font-weight: bold; }
+  .grip { flex: none; width: 26px; height: 34px; line-height: 34px; text-align: center; color: #90a4ae; font-size: 20px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  li.dragging { position: relative; z-index: 5; box-shadow: 0 6px 18px rgba(0,0,0,.25); opacity: .95; }
+  li.dropbefore { box-shadow: 0 -4px 0 #00796b; } li.dropafter { box-shadow: 0 4px 0 #00796b; }
   .tm.hot { color: #d32f2f; font-weight: bold; }
   .firstbadge { display: inline-block; background: #1565c0; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin: 2px 0 0 4px; }
   .st { display: flex; gap: 3px; flex: none; }
@@ -202,6 +205,42 @@
     return (x >= 720 && x <= 840) || (x >= 1080 && x <= 1200);
   }
 
+  // ---- ドラッグで並べ替え（マウスもタッチも Pointer Events で共通）----
+  var dragging = false;
+  function startDrag(e, li, from) {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    var grip = e.currentTarget, lis = Array.prototype.slice.call($('list').children);
+    var rects = lis.map(function (x) { var r = x.getBoundingClientRect(); return { top: r.top + window.scrollY, h: r.height }; });
+    var startY = e.clientY, startScroll = window.scrollY, to = from, lastY = e.clientY;
+    dragging = true; li.classList.add('dragging');
+    try { grip.setPointerCapture(e.pointerId); } catch (x) {}
+    function target() {
+      var dy = (lastY - startY) + (window.scrollY - startScroll);
+      var center = rects[from].top + rects[from].h / 2 + dy, best = from, bd = Infinity;
+      rects.forEach(function (r, j) { var d = Math.abs(r.top + r.h / 2 - center); if (d < bd) { bd = d; best = j; } });
+      li.style.transform = 'translateY(' + dy + 'px)';
+      lis.forEach(function (x) { x.classList.remove('dropbefore', 'dropafter'); });
+      if (best !== from) lis[best].classList.add(best < from ? 'dropbefore' : 'dropafter');
+      to = best;
+    }
+    var timer = setInterval(function () {   // 画面の端に近いときは自動スクロール
+      if (lastY < 70) window.scrollBy(0, -14); else if (lastY > window.innerHeight - 70) window.scrollBy(0, 14); else return;
+      target();
+    }, 30);
+    function move(ev) { lastY = ev.clientY; target(); }
+    function end(ev, cancel) {
+      clearInterval(timer);
+      grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', cn);
+      try { grip.releasePointerCapture(e.pointerId); } catch (x) {}
+      dragging = false;
+      if (!cancel && to !== from) { send({ op: 'move', from: from, to: to }); }
+      else { li.classList.remove('dragging'); li.style.transform = ''; lis.forEach(function (x) { x.classList.remove('dropbefore', 'dropafter'); }); }
+    }
+    function up(ev) { end(ev, false); } function cn(ev) { end(ev, true); }
+    grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', cn);
+  }
+
   function render() {
     // メモ入力中に他端末の更新で再描画されても、入力途中の文字とカーソルを保つ
     var ae = document.activeElement, keep = null;
@@ -211,6 +250,7 @@
     items.forEach(function (v, i) {
       var li = document.createElement('li');
       var no = document.createElement('span'); no.className = 'no'; no.textContent = (i + 1);
+      if (v !== null) { var gp = document.createElement('span'); gp.className = 'grip'; gp.textContent = '⠿'; gp.title = 'ドラッグで並べ替え'; gp.onpointerdown = function (e) { startDrag(e, li, i); }; li.appendChild(gp); }
       li.appendChild(no);
       var tm = document.createElement('span'); tm.className = 'tm'; tm.textContent = times[i] || '';
       if (isBusy(times[i])) tm.classList.add('hot');
@@ -310,7 +350,7 @@
     showPdfInfo(); render();
     if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }
   }
-  var OP_LABEL = { add: '番号追加', del: '削除', restore: '復活', mark: '印の変更', memo: 'メモ', reset: 'リセット', appt: '予約PDF読込', rollback: '履歴から復元' };
+  var OP_LABEL = { add: '番号追加', del: '削除', restore: '復活', mark: '印の変更', memo: 'メモ', reset: 'リセット', appt: '予約PDF読込', rollback: '履歴から復元', move: '並べ替え' };
   function hm(t) { return new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }); }
   $('histBtn').onclick = function () {
     $('hist').style.display = 'block'; var box = $('histList'); box.textContent = '読み込み中…';
@@ -334,13 +374,13 @@
   };
   $('histClose').onclick = function () { $('hist').style.display = 'none'; };
 
-  function fail(e) { pendingNew = false; setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; }
+  function fail(e) { pendingNew = false; render(); setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; }
   function send(body) {
     busy++;
     return api('POST', body).then(applyState).catch(fail).then(function () { busy--; });
   }
   function poll() {
-    if (busy || document.hidden) return;
+    if (busy || dragging || document.hidden) return;
     api('GET').then(applyState).catch(function (e) { setSync(false, '未同期'); $('msg').textContent = '同期できません: ' + e.message; });
   }
   setInterval(poll, 5000);
