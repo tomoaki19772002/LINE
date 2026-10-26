@@ -63,7 +63,7 @@
   #hist .hrow .ho { flex: 1; } #hist .hrow .ho.reset { color: #c62828; font-weight: bold; }
   #hist .hrow button { background: #e0f2f1; color: #00695c; padding: 5px 10px; font-weight: bold; }
   .grip { flex: none; width: 26px; height: 34px; line-height: 34px; text-align: center; color: #90a4ae; font-size: 20px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-  #list { position: relative; }
+  #list { position: relative; display: flex; flex-direction: column-reverse; }  /* 最新のスキャンが一番上 */
   li { transition: transform .15s ease; }
   li.dragging { position: relative; z-index: 5; transition: none; border: 2px solid #00796b; box-shadow: 0 8px 22px rgba(0,0,0,.3); opacity: .96; }
   .ph { position: absolute; left: 0; right: 0; border: 3px dashed #00897b; background: rgba(0,150,136,.12); border-radius: 10px; pointer-events: none; z-index: 1; transition: top .15s ease; }
@@ -124,6 +124,8 @@
   var lastCode = '', lastAt = 0, newIdx = -1;
   // 予約データ: {正規化カルテ番号: {times:[], name}}  ※PDFは1日分のみ。新しく読込むと置き換え
   var appt = {}, apptLoaded = false;
+  // 「予約外」と表示しない番号（999021〜999030）
+  function isExempt(c) { var n = +norm(c); return n >= 999021 && n <= 999030; }
   function norm(c) { return String(c).replace(/[^0-9]/g, '').replace(/^0+/, ''); }
   function showPdfInfo() {
     var el = $('pdfInfo');
@@ -234,24 +236,25 @@
       rects.forEach(function (r, j) { var d = Math.abs(r.top + r.h / 2 - center); if (d < bd) { bd = d; best = j; } });
       to = best;
       li.style.transform = 'translateY(' + dy + 'px)';
-      // 間を空けるように他の行をずらし、入る場所に緑の枠を出す
+      // 間を空けるように他の行をずらし、入る場所に緑の枠を出す（画面上の並びは新しい順＝データと逆）
+      var n = lis.length, vf = n - 1 - from, vt = n - 1 - to;
       lis.forEach(function (x, j) {
         if (j === from) return;
-        var sh = 0;
-        if (to > from && j > from && j <= to) sh = -gap;
-        if (to < from && j >= to && j < from) sh = gap;
+        var vj = n - 1 - j, sh = 0;
+        if (vt > vf && vj > vf && vj <= vt) sh = -gap;
+        if (vt < vf && vj >= vt && vj < vf) sh = gap;
         x.style.transform = sh ? 'translateY(' + sh + 'px)' : '';
       });
-      var slotTop = to === from ? rects[from].top : (to < from ? rects[to].top : rects[to].top + rects[to].h - rects[from].h);
+      var slotTop = to === from ? rects[from].top : (vt < vf ? rects[to].top : rects[to].top + rects[to].h - rects[from].h);
       ph.style.top = (slotTop - listTop) + 'px';
       // 「どの患者とどの患者の間か」を文字でも表示
       var order = []; items.forEach(function (_, j) { if (j !== from) order.push(j); }); order.splice(to, 0, from);
-      var prev = order[to - 1], next = order[to + 1];
+      var vis = order.slice().reverse(), vp = vis.indexOf(from);   // 画面に見える並び（上が新しい）
+      var above = vis[vp - 1], below = vis[vp + 1];
       hint.innerHTML = '';
       var m = document.createElement('div'); m.className = 'hm'; m.textContent = label(from) + ' を'; hint.appendChild(m);
-      var t1 = document.createElement('div'); t1.textContent = prev === undefined ? '先頭に入れる' : '上: ' + label(prev); hint.appendChild(t1);
-      if (prev !== undefined) { var t2 = document.createElement('div'); t2.textContent = next === undefined ? '下: （末尾）' : '下: ' + label(next); hint.appendChild(t2); }
-      else if (next !== undefined) { t1.textContent = '先頭に入れる（下: ' + label(next) + '）'; }
+      var t1 = document.createElement('div'); t1.textContent = above === undefined ? '一番上に入れる' : '上: ' + label(above); hint.appendChild(t1);
+      var t2 = document.createElement('div'); t2.textContent = below === undefined ? '下: （一番下）' : '下: ' + label(below); hint.appendChild(t2);
     }
     target();
     var timer = setInterval(function () {   // 画面の端に近いときは自動スクロール
@@ -317,7 +320,7 @@
         info.innerHTML = '<div class="t"></div><div class="n"></div>';
         info.firstChild.textContent = hit.times.join(' / ');
         info.lastChild.textContent = hit.name;
-      } else if (apptLoaded) {
+      } else if (apptLoaded && !isExempt(v)) {
         info.innerHTML = '<span class="out">予約外</span>'; li.classList.add('gai');
       }
       if (hit && hit.inf) {
@@ -474,7 +477,7 @@
     send({ op: 'add', code: code }).then(function () {
       if (items[items.length - 1] !== code) return;   // 追加に失敗したときは何もしない
       $('msg').textContent = '読取: ' + code;
-      if (soundOn && apptLoaded && !appt[norm(code)]) bell();   // 予約外 → 鈴
+      if (soundOn && apptLoaded && !appt[norm(code)] && !isExempt(code)) bell();   // 予約外 → 鈴
     });
   }
 
