@@ -22,13 +22,13 @@
   .scanbox button { background: #00796b; color: #fff; }
   .bar { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; font-size: 14px; color: #546e7a; }
   ol { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; flex-wrap: wrap; row-gap: 6px; align-items: center; gap: 8px; background: #fff; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; min-height: 58px; border: 1px solid #e0e6ea; }
+  li { display: flex; flex-wrap: wrap; row-gap: 6px; align-items: center; gap: 6px; background: #fff; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; min-height: 58px; border: 1px solid #e0e6ea; }
   li.empty { background: transparent; border: 1px dashed #cfd8dc; }
   li.new { animation: flash 1.2s; }
   @keyframes flash { from { background: #fff59d; } to { background: #fff; } }
   .gone { flex: 1; color: #b0bec5; text-decoration: line-through; font-size: 18px; }
   .restore { background: #fff8e1; color: #f57f17; font-weight: bold; white-space: nowrap; }
-  .no { width: 26px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
+  .no { width: 20px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
   .num { flex: 1 0 auto; min-width: 100px; font-size: 26px; font-weight: bold; letter-spacing: 1px; font-variant-numeric: tabular-nums; word-break: break-all; }
   .dup { font-size: 11px; background: #ffe0b2; color: #e65100; border-radius: 4px; padding: 1px 5px; margin-left: 6px; font-weight: normal; letter-spacing: 0; }
   .copy { background: #e0f2f1; color: #00695c; font-weight: bold; }
@@ -38,6 +38,9 @@
   .info .t { font-weight: bold; color: #00796b; }
   .info .n { color: #37474f; }
   .out { background: #ff8f00; color: #fff; font-weight: bold; border-radius: 6px; padding: 4px 10px; font-size: 15px; }
+  .out { border: 0; cursor: pointer; }
+  .out.in { background: #43a047; }
+  li.ok { background: #e8f5e9; border-color: #a5d6a7; }
   li.gai { background: #fff3e0; border-color: #ffcc80; }
   .pdfbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; color: #546e7a; flex-wrap: wrap; }
   .pdfbar label { background: #fff; border: 1px solid #00796b; color: #00796b; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: bold; }
@@ -48,8 +51,8 @@
   .mk2 { --c: #fb8c00; --l: #fff3e0; } .mk3 { --c: #8e24aa; --l: #f3e5f5; }
   .mk { background: var(--l); color: var(--c); opacity: .55; border-color: var(--l); }
   .mk.on { background: var(--c); color: #fff; opacity: 1; border-color: var(--c); }
-  .tm { flex: none; width: 42px; font-size: 13px; color: #546e7a; font-variant-numeric: tabular-nums; }
-  .memo { flex: 1 0 100%; order: 10; margin-left: 34px; max-width: calc(100% - 34px); font: inherit; font-size: 16px; padding: 10px; border: 1px solid #cfd8dc; border-radius: 8px; }
+  .tm { flex: none; min-width: 56px; text-align: center; font-size: 17px; font-weight: bold; color: #37474f; border: 2px solid #90a4ae; border-radius: 8px; padding: 2px 4px; background: #fff; font-variant-numeric: tabular-nums; }
+  .memo { flex: 1 0 100%; order: 10; margin-left: 28px; max-width: calc(100% - 28px); font: inherit; font-size: 16px; padding: 10px; border: 1px solid #cfd8dc; border-radius: 8px; }
   .memo:focus { border-color: #00796b; outline: 0; }
   li.inf { background: #ffcdd2; border: 2px solid #e53935; }
   .infbadge { display: inline-block; background: #d32f2f; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin-top: 2px; }
@@ -62,14 +65,14 @@
   #hist .hrow .ht { width: 72px; color: #546e7a; font-variant-numeric: tabular-nums; }
   #hist .hrow .ho { flex: 1; } #hist .hrow .ho.reset { color: #c62828; font-weight: bold; }
   #hist .hrow button { background: #e0f2f1; color: #00695c; padding: 5px 10px; font-weight: bold; }
-  .grip { flex: none; width: 26px; height: 34px; line-height: 34px; text-align: center; color: #90a4ae; font-size: 20px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .grip { flex: none; width: 20px; height: 34px; line-height: 34px; text-align: center; color: #90a4ae; font-size: 20px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
   #list { position: relative; display: flex; flex-direction: column-reverse; }  /* 最新のスキャンが一番上 */
   li { transition: transform .15s ease; }
   li.dragging { position: relative; z-index: 5; transition: none; border: 2px solid #00796b; box-shadow: 0 8px 22px rgba(0,0,0,.3); opacity: .96; }
   .ph { position: absolute; left: 0; right: 0; border: 3px dashed #00897b; background: rgba(0,150,136,.12); border-radius: 10px; pointer-events: none; z-index: 1; transition: top .15s ease; }
   .drophint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; background: #004d40; color: #fff; border-radius: 12px; padding: 10px 16px; font-size: 15px; line-height: 1.5; box-shadow: 0 4px 16px rgba(0,0,0,.35); max-width: 92vw; pointer-events: none; }
   .drophint .hm { font-weight: bold; font-size: 16px; color: #ffe082; }
-  .tm.hot { color: #d32f2f; font-weight: bold; }
+  .tm.hot { color: #d32f2f; border-color: #d32f2f; }
   .firstbadge { display: inline-block; background: #1565c0; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin: 2px 0 0 4px; }
   .st { display: flex; gap: 3px; flex: none; }
   .st .mk { width: auto; padding: 0 8px; font-size: 13px; }
@@ -321,7 +324,11 @@
         info.firstChild.textContent = hit.times.join(' / ');
         info.lastChild.textContent = hit.name;
       } else if (apptLoaded && !isExempt(v)) {
-        info.innerHTML = '<span class="out">予約外</span>'; li.classList.add('gai');
+        // 「予約外」を押すと「予約内」(緑)に切り替わる（もう一度押すと戻る・他の端末にも同期）
+        var okFlag = ((marks[i] | 0) & 128) !== 0;
+        var ob = document.createElement('button'); ob.className = 'out' + (okFlag ? ' in' : ''); ob.textContent = okFlag ? '予約内' : '予約外';
+        ob.onclick = function () { send({ op: 'mark', index: i, flag: 7, on: !okFlag }); };
+        info.appendChild(ob); li.classList.add(okFlag ? 'ok' : 'gai');
       }
       if (hit && hit.inf) {
         li.classList.add('inf');

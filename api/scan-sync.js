@@ -30,7 +30,7 @@ function cleanAppt(input) {
   return out;
 }
 
-// 古い保存データにも marks(印のビット: 薬=1 保=2 糖=4 他=8 変わりない=16 よくなった=32 1診=64)を持たせる
+// 古い保存データにも marks(印のビット: 薬=1 保=2 糖=4 他=8 変わりない=16 よくなった=32 1診=64 予約内に変更=128)を持たせる
 function normalize(state) {
   if (!Array.isArray(state.marks)) state.marks = [];
   if (!Array.isArray(state.times)) state.times = []; // スキャン時刻(日本時間 HH:mm)
@@ -86,7 +86,7 @@ function applyOp(state, body) {
     case 'mark': {
       const i = body.index, f = body.flag;
       if (!Number.isInteger(i) || i < 0 || i >= state.items.length || state.items[i] === null) return false;
-      if (!Number.isInteger(f) || f < 0 || f > 6 || typeof body.on !== 'boolean') return false;
+      if (!Number.isInteger(f) || f < 0 || f > 7 || typeof body.on !== 'boolean') return false;
       const cur = state.marks[i] | 0;
       state.marks[i] = body.on ? (cur | (1 << f)) : (cur & ~(1 << f));
       return true;
