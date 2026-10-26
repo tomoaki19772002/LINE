@@ -99,6 +99,7 @@
     <label>本日の予約PDFを読込<input type="file" id="pdfIn" accept="application/pdf" hidden></label>
     <span id="pdfInfo">予約PDF未読込</span>
     <button id="histBtn" class="histbtn">履歴</button>
+    <button id="bellBtn" class="histbtn" title="予約外のときに鈴の音を鳴らす">🔔 鈴 ON</button>
     <span id="sync" style="margin-left:auto">接続中…</span>
   </div>
   <div id="reader"></div>
@@ -381,6 +382,37 @@
     showPdfInfo(); render();
     if (pendingNew) { var last = $('list').lastElementChild; if (last) last.scrollIntoView({ block: 'nearest' }); pendingNew = false; }
   }
+  // ---- 予約外の鈴の音（音声ファイルは使わず、その場で合成）----
+  var audioCtx = null, soundOn = true;
+  try { soundOn = localStorage.getItem('bellOff') !== '1'; } catch (e) {}
+  function unlockAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  ['pointerdown', 'keydown', 'touchstart'].forEach(function (t) { document.addEventListener(t, unlockAudio, { passive: true }); });
+  function bell() {
+    unlockAudio(); if (!audioCtx) return;
+    [0, 0.28].forEach(function (delay) {            // チリンチリンと2回
+      var t0 = audioCtx.currentTime + delay;
+      [[1, 0.5], [2.76, 0.25], [5.4, 0.12]].forEach(function (p) {   // 鈴らしい非整数倍の倍音
+        var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = 1320 * p[0];
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(p[1], t0 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
+        o.connect(g); g.connect(audioCtx.destination); o.start(t0); o.stop(t0 + 1.2);
+      });
+    });
+  }
+  function showBell() { $('bellBtn').textContent = soundOn ? '🔔 鈴 ON' : '🔕 鈴 OFF'; $('bellBtn').style.opacity = soundOn ? '1' : '.6'; }
+  $('bellBtn').onclick = function () {
+    soundOn = !soundOn; try { localStorage.setItem('bellOff', soundOn ? '0' : '1'); } catch (e) {}
+    showBell(); if (soundOn) bell();
+  };
+  showBell();
+
   var OP_LABEL = { add: '番号追加', del: '削除', restore: '復活', mark: '印の変更', memo: 'メモ', reset: 'リセット', appt: '予約PDF読込', rollback: '履歴から復元', move: '並べ替え' };
   function hm(t) { return new Date(t).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour12: false }); }
   $('histBtn').onclick = function () {
@@ -439,7 +471,11 @@
     if (fromCamera && code === lastCode && now - lastAt < 3000) { lastAt = now; return; }
     lastCode = code; lastAt = now;
     pendingNew = true;         // サーバー側で常に最下行へ追加（空きスペースは再利用しない）
-    send({ op: 'add', code: code }).then(function () { $('msg').textContent = '読取: ' + code; });
+    send({ op: 'add', code: code }).then(function () {
+      if (items[items.length - 1] !== code) return;   // 追加に失敗したときは何もしない
+      $('msg').textContent = '読取: ' + code;
+      if (soundOn && apptLoaded && !appt[norm(code)]) bell();   // 予約外 → 鈴
+    });
   }
 
   $('inp').addEventListener('keydown', function (e) {
