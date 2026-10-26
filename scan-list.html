@@ -63,8 +63,12 @@
   #hist .hrow .ho { flex: 1; } #hist .hrow .ho.reset { color: #c62828; font-weight: bold; }
   #hist .hrow button { background: #e0f2f1; color: #00695c; padding: 5px 10px; font-weight: bold; }
   .grip { flex: none; width: 26px; height: 34px; line-height: 34px; text-align: center; color: #90a4ae; font-size: 20px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-  li.dragging { position: relative; z-index: 5; box-shadow: 0 6px 18px rgba(0,0,0,.25); opacity: .95; }
-  li.dropbefore { box-shadow: 0 -4px 0 #00796b; } li.dropafter { box-shadow: 0 4px 0 #00796b; }
+  #list { position: relative; }
+  li { transition: transform .15s ease; }
+  li.dragging { position: relative; z-index: 5; transition: none; border: 2px solid #00796b; box-shadow: 0 8px 22px rgba(0,0,0,.3); opacity: .96; }
+  .ph { position: absolute; left: 0; right: 0; border: 3px dashed #00897b; background: rgba(0,150,136,.12); border-radius: 10px; pointer-events: none; z-index: 1; transition: top .15s ease; }
+  .drophint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; background: #004d40; color: #fff; border-radius: 12px; padding: 10px 16px; font-size: 15px; line-height: 1.5; box-shadow: 0 4px 16px rgba(0,0,0,.35); max-width: 92vw; pointer-events: none; }
+  .drophint .hm { font-weight: bold; font-size: 16px; color: #ffe082; }
   .tm.hot { color: #d32f2f; font-weight: bold; }
   .firstbadge { display: inline-block; background: #1565c0; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin: 2px 0 0 4px; }
   .st { display: flex; gap: 3px; flex: none; }
@@ -210,20 +214,45 @@
   function startDrag(e, li, from) {
     if (e.button !== undefined && e.button !== 0) return;
     e.preventDefault();
-    var grip = e.currentTarget, lis = Array.prototype.slice.call($('list').children);
+    var grip = e.currentTarget, listEl = $('list'), lis = Array.prototype.slice.call(listEl.children);
+    var listTop = listEl.getBoundingClientRect().top + window.scrollY;
     var rects = lis.map(function (x) { var r = x.getBoundingClientRect(); return { top: r.top + window.scrollY, h: r.height }; });
+    var gap = rects[from].h + 6;   // 行の高さ + 行間
     var startY = e.clientY, startScroll = window.scrollY, to = from, lastY = e.clientY;
     dragging = true; li.classList.add('dragging');
+    var ph = document.createElement('div'); ph.className = 'ph'; ph.style.height = rects[from].h + 'px'; listEl.appendChild(ph);
+    var hint = document.createElement('div'); hint.className = 'drophint'; document.body.appendChild(hint);
     try { grip.setPointerCapture(e.pointerId); } catch (x) {}
+    function label(j) {
+      var v = items[j]; if (v === null || v === undefined) return '（空欄）';
+      var h = appt[norm(v)]; return v + (h ? ' ' + h.name : '');
+    }
     function target() {
       var dy = (lastY - startY) + (window.scrollY - startScroll);
       var center = rects[from].top + rects[from].h / 2 + dy, best = from, bd = Infinity;
       rects.forEach(function (r, j) { var d = Math.abs(r.top + r.h / 2 - center); if (d < bd) { bd = d; best = j; } });
-      li.style.transform = 'translateY(' + dy + 'px)';
-      lis.forEach(function (x) { x.classList.remove('dropbefore', 'dropafter'); });
-      if (best !== from) lis[best].classList.add(best < from ? 'dropbefore' : 'dropafter');
       to = best;
+      li.style.transform = 'translateY(' + dy + 'px)';
+      // 間を空けるように他の行をずらし、入る場所に緑の枠を出す
+      lis.forEach(function (x, j) {
+        if (j === from) return;
+        var sh = 0;
+        if (to > from && j > from && j <= to) sh = -gap;
+        if (to < from && j >= to && j < from) sh = gap;
+        x.style.transform = sh ? 'translateY(' + sh + 'px)' : '';
+      });
+      var slotTop = to === from ? rects[from].top : (to < from ? rects[to].top : rects[to].top + rects[to].h - rects[from].h);
+      ph.style.top = (slotTop - listTop) + 'px';
+      // 「どの患者とどの患者の間か」を文字でも表示
+      var order = []; items.forEach(function (_, j) { if (j !== from) order.push(j); }); order.splice(to, 0, from);
+      var prev = order[to - 1], next = order[to + 1];
+      hint.innerHTML = '';
+      var m = document.createElement('div'); m.className = 'hm'; m.textContent = label(from) + ' を'; hint.appendChild(m);
+      var t1 = document.createElement('div'); t1.textContent = prev === undefined ? '先頭に入れる' : '上: ' + label(prev); hint.appendChild(t1);
+      if (prev !== undefined) { var t2 = document.createElement('div'); t2.textContent = next === undefined ? '下: （末尾）' : '下: ' + label(next); hint.appendChild(t2); }
+      else if (next !== undefined) { t1.textContent = '先頭に入れる（下: ' + label(next) + '）'; }
     }
+    target();
     var timer = setInterval(function () {   // 画面の端に近いときは自動スクロール
       if (lastY < 70) window.scrollBy(0, -14); else if (lastY > window.innerHeight - 70) window.scrollBy(0, 14); else return;
       target();
@@ -234,8 +263,10 @@
       grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); grip.removeEventListener('pointercancel', cn);
       try { grip.releasePointerCapture(e.pointerId); } catch (x) {}
       dragging = false;
+      if (ph.parentNode) ph.parentNode.removeChild(ph);
+      if (hint.parentNode) hint.parentNode.removeChild(hint);
       if (!cancel && to !== from) { send({ op: 'move', from: from, to: to }); }
-      else { li.classList.remove('dragging'); li.style.transform = ''; lis.forEach(function (x) { x.classList.remove('dropbefore', 'dropafter'); }); }
+      else { li.classList.remove('dragging'); lis.forEach(function (x) { x.style.transform = ''; }); }
     }
     function up(ev) { end(ev, false); } function cn(ev) { end(ev, true); }
     grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', cn);
