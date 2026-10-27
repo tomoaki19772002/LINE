@@ -35,8 +35,8 @@
   .copy.done { background: #00796b; color: #fff; }
   .del { background: #ffebee; color: #c62828; font-weight: bold; }
   .info { flex: none; text-align: right; font-size: 15px; line-height: 1.3; min-width: 110px; }
-  .info .t { font-weight: bold; color: #00796b; }
-  .info .n { color: #37474f; }
+  .info .t { font-weight: bold; color: #00796b; font-size: 22px; line-height: 1.15; }
+  .info .n { color: #37474f; font-size: 16px; }
   .out { background: #ff8f00; color: #fff; font-weight: bold; border-radius: 6px; padding: 4px 10px; font-size: 15px; }
   .out { border: 0; cursor: pointer; }
   .out.in { background: #43a047; }
@@ -79,11 +79,11 @@
   .mk6 { --c: #3949ab; --l: #e8eaf6; }
   .mk5:not(.on) { background: #fffafc; color: #edb7ca; border-color: #fdeef3; opacity: 1; }
   .mk4 { --c: #546e7a; --l: #eceff1; } .mk5 { --c: #d81b60; --l: #fce4ec; }
-  .copy, .del { white-space: nowrap; }
+  .acts { display: flex; gap: 5px; flex: none; flex-wrap: nowrap; }
+  .copy, .del { white-space: nowrap; font-size: 14px; padding: 8px 6px; min-width: 62px; }
   @media (max-width: 880px) {
     li { flex-wrap: wrap; row-gap: 4px; }
     .num { font-size: 22px; min-width: 110px; }
-    .copy, .del { padding: 8px 9px; }
     .st { order: 11; padding-left: 34px; }
     .info { order: 9; flex-basis: 100%; text-align: left; padding-left: 34px; display: flex; gap: 10px; align-items: baseline; }
     .info:empty { display: none; }
@@ -316,7 +316,6 @@
       if (items.indexOf(v) !== i) {
         var d = document.createElement('span'); d.className = 'dup'; d.textContent = '重複'; num.appendChild(d);
       }
-      num.onclick = function () { copy(v, cb); };
       var info = document.createElement('span'); info.className = 'info';
       var hit = appt[norm(v)];
       if (hit) {
@@ -350,10 +349,12 @@
         st.appendChild(b);
       });
       var cb = document.createElement('button'); cb.className = 'copy'; cb.textContent = 'コピー';
-      cb.onclick = function () { copy(v, cb); };
+      if (((marks[i] | 0) & 256) !== 0) { cb.classList.add('done'); cb.textContent = 'コピー済'; }
+      function doCopy() { copy(v, cb); if (!((marks[i] | 0) & 256)) send({ op: 'mark', index: i, flag: 8, on: true }); }   // コピー済は保存して再読込しても残す
+      cb.onclick = doCopy; num.onclick = doCopy;
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
       db.onclick = function () { send({ op: 'del', index: i }); };
-      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); li.appendChild(st); li.appendChild(cb); li.appendChild(db);
+      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); var acts = document.createElement('span'); acts.className = 'acts'; acts.appendChild(cb); acts.appendChild(db); li.appendChild(st); li.appendChild(acts);
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';
@@ -461,7 +462,6 @@
 
   function copy(text, btn) {
     function ok() {
-      document.querySelectorAll('.copy.done').forEach(function (b) { b.classList.remove('done'); b.textContent = 'コピー'; });
       btn.classList.add('done'); btn.textContent = 'コピー済';
     }
     if (navigator.clipboard && window.isSecureContext) {
