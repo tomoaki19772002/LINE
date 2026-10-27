@@ -23,6 +23,8 @@ function cleanAppt(input) {
       inf: v.inf === true,
       infWhy: typeof v.infWhy === 'string' ? v.infWhy.slice(0, 12) : '',
       first: v.first === true,
+      menus: Array.isArray(v.menus) ? v.menus.filter(m => typeof m === 'string').map(m => m.slice(0, 8)).slice(0, 12) : [],
+      memo: typeof v.memo === 'string' ? v.memo.slice(0, MAX_MEMO) : '',
       name: v.name.slice(0, 40),
       times: v.times.filter(t => typeof t === 'string').map(t => t.slice(0, 8)).slice(0, 10)
     };
@@ -40,7 +42,7 @@ function normalize(state) {
 }
 
 const JST_TIME = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false });
-const MAX_MEMO = 200;
+const MAX_MEMO = 400;
 
 // 操作を状態に適用する。不正なら false
 function applyOp(state, body) {
@@ -51,7 +53,7 @@ function applyOp(state, body) {
       state.items.push(code);
       const n = state.items.length - 1;
       state.marks[n] = 0;
-      state.memos[n] = '';
+      state.memos[n] = typeof body.memo === 'string' ? body.memo.slice(0, MAX_MEMO) : ''; // PDFの備考を最初のメモとして入れる
       state.times[n] = JST_TIME.format(new Date());
       return true;
     }

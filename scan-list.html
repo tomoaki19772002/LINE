@@ -73,6 +73,8 @@
   .drophint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; background: #004d40; color: #fff; border-radius: 12px; padding: 10px 16px; font-size: 15px; line-height: 1.5; box-shadow: 0 4px 16px rgba(0,0,0,.35); max-width: 92vw; pointer-events: none; }
   .drophint .hm { font-weight: bold; font-size: 16px; color: #ffe082; }
   .tm.hot { color: #d32f2f; border-color: #d32f2f; }
+  .menus { flex: 1 0 100%; order: 9; display: flex; flex-wrap: wrap; gap: 5px; padding-left: 28px; }
+  .mchip { color: #fff; font-weight: bold; font-size: 14px; border-radius: 6px; padding: 2px 10px; }
   .firstbadge { display: inline-block; background: #1565c0; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin: 2px 0 0 4px; }
   .st { display: flex; gap: 3px; flex: none; }
   .st .mk { width: auto; padding: 0 8px; font-size: 13px; }
@@ -131,6 +133,14 @@
   var appt = {}, apptLoaded = false;
   // 「予約外」と表示しない番号（999021〜999030）
   function isExempt(c) { var n = +norm(c); return n >= 999021 && n <= 999030; }
+  // 診療メニューの表示ルール [表示名, 判定]。EKCは赤い「感染・EKC」バッジ側で表示する
+  var MENU_RULES = [
+    ['初診', /初診|,初/], ['再診', /再診/], ['散瞳', /散瞳/], ['視野', /視野/], ['術前', /術前/], ['手術', /手術/],
+    ['術後', /術後/], ['注射後', /注射後/], ['リジュセア', /リジュセア/], ['コンタクト', /コンタクト/],
+    ['眼鏡処方', /眼鏡/], ['健康診断', /健康診断|健診|検診/]
+  ];
+  var MENU_COLOR = { '初診': '#1565c0', '再診': '#78909c', '散瞳': '#7e57c2', '視野': '#00897b', '術前': '#ef6c00', '手術': '#ad1457',
+    '術後': '#6d4c41', '注射後': '#3949ab', 'リジュセア': '#00838f', 'コンタクト': '#558b2f', '眼鏡処方': '#b8860b', '健康診断': '#8d6e63' };
   function norm(c) { return String(c).replace(/[^0-9]/g, '').replace(/^0+/, ''); }
   function showPdfInfo() {
     var el = $('pdfInfo');
@@ -164,8 +174,10 @@
       var hMenu = items.find(function (i) { return i.s === '診療メニュー'; });
       var hMa = items.find(function (i) { return i.s === 'マ'; });
       var hState = items.find(function (i) { return i.s === '状態'; });
+      var hPat = items.find(function (i) { return i.s === '患者備考'; });
+      var hCli = items.find(function (i) { return i.s === 'クリニック備考'; });
       if (hName && hNo && hMenu) {
-        cols = { xName: hName.x - 8, xNo: hNo.x - 4, xMenu: hMenu.x - 4, xMa: hMa ? hMa.x - 6 : null, xSt: hState ? hState.x - 4 : null };
+        cols = { xName: hName.x - 8, xNo: hNo.x - 4, xMenu: hMenu.x - 4, xMa: hMa ? hMa.x - 6 : null, xSt: hState ? hState.x - 4 : null, xPat: hPat ? hPat.x - 4 : null, xCli: hCli ? hCli.x - 4 : null };
       }
       if (!cols) continue;
       var xName = cols.xName, xNo = cols.xNo, xMenu = cols.xMenu;
@@ -191,9 +203,22 @@
         if (/EKC/i.test(menu)) why.push('EKC');
         // メニューは長いと「再診（下記以外）,初...」のように省略表示されるので「,初」も初診扱い
         var first = /初診|,初/.test(menu);
-        if (!out[key]) out[key] = { times: [], name: name, inf: false, infWhy: '', first: false };
+        // 診療メニューの種類（「散瞳」があるときは「再診」を出さない）
+        var labels = MENU_RULES.filter(function (r) { return r[1].test(menu); }).map(function (r) { return r[0]; });
+        if (labels.indexOf('散瞳') >= 0) labels = labels.filter(function (l) { return l !== '再診'; });
+        // 備考（患者備考・クリニック備考）はメモに転記する。折り返した行も連結
+        var remarks = [];
+        if (cols.xPat !== null && cols.xCli !== null) {
+          var rp = cellText(cols.xPat, cols.xCli).replace(/\s+/g, ' ').trim();
+          var rc = cellText(cols.xCli, 100000).replace(/\s+/g, ' ').trim();
+          if (rp) remarks.push('【患者備考】' + rp);
+          if (rc) remarks.push('【クリニック備考】' + rc);
+        }
+        if (!out[key]) out[key] = { times: [], name: name, inf: false, infWhy: '', first: false, menus: [], memo: '' };
         if (why.length) { out[key].inf = true; out[key].infWhy = why.join('・'); }
         if (first) out[key].first = true;
+        labels.forEach(function (l) { if (out[key].menus.indexOf(l) < 0) out[key].menus.push(l); });
+        remarks.forEach(function (r) { if (out[key].memo.indexOf(r) < 0) out[key].memo += (out[key].memo ? ' ／ ' : '') + r; });
         if (out[key].times.indexOf(t.s) < 0) out[key].times.push(t.s);
       });
     }
@@ -336,11 +361,13 @@
         var ib = document.createElement('span'); ib.className = 'infbadge'; ib.textContent = hit.infWhy || '感染';
         info.appendChild(ib);
       }
-      if (hit && hit.first) {
-        var fb = document.createElement('span'); fb.className = 'firstbadge'; fb.textContent = '初診';
-        info.appendChild(fb);
-      }
-      var memo = document.createElement('input'); memo.className = 'memo'; memo.placeholder = 'メモ'; memo.maxLength = 200;
+      var menusEl = document.createElement('span'); menusEl.className = 'menus';
+      var mlist = (hit && hit.menus ? hit.menus : []).slice();
+      if (hit && hit.first && mlist.indexOf('初診') < 0) mlist.unshift('初診');
+      mlist.forEach(function (m) {
+        var c = document.createElement('span'); c.className = 'mchip'; c.textContent = m; c.style.background = MENU_COLOR[m] || '#78909c'; menusEl.appendChild(c);
+      });
+      var memo = document.createElement('input'); memo.className = 'memo'; memo.placeholder = 'メモ'; memo.maxLength = 400;
       memo.setAttribute('data-i', i); memo.value = memos[i] || '';
       memo.onchange = function () { if (memo.value !== (memos[i] || '')) send({ op: 'memo', index: i, text: memo.value }); };
       memo.onkeydown = function (e) { if (e.key === 'Enter') { memo.blur(); $('inp').focus(); } };
@@ -356,7 +383,7 @@
       cb.onclick = doCopy; num.onclick = doCopy;
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
       db.onclick = function () { send({ op: 'del', index: i }); };
-      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); var acts = document.createElement('span'); acts.className = 'acts';
+      li.appendChild(mk); li.appendChild(num); li.appendChild(info); if (mlist.length) li.appendChild(menusEl); li.appendChild(memo); var acts = document.createElement('span'); acts.className = 'acts';
       var cbw = document.createElement('span'); cbw.className = 'cbwrap'; cbw.appendChild(cb);
       if (((marks[i] | 0) & 256) !== 0) {   // コピー済の角の「↩」で「コピー」に戻せる
         var ub = document.createElement('button'); ub.className = 'undo'; ub.textContent = '↩'; ub.title = 'コピー済を取り消す';
@@ -490,7 +517,7 @@
     if (fromCamera && code === lastCode && now - lastAt < 3000) { lastAt = now; return; }
     lastCode = code; lastAt = now;
     pendingNew = true;         // サーバー側で常に最下行へ追加（空きスペースは再利用しない）
-    send({ op: 'add', code: code }).then(function () {
+    send({ op: 'add', code: code, memo: (appt[norm(code)] || {}).memo || '' }).then(function () {
       if (items[items.length - 1] !== code) return;   // 追加に失敗したときは何もしない
       $('msg').textContent = '読取: ' + code;
       if (soundOn && apptLoaded && !appt[norm(code)] && !isExempt(code)) bell();   // 予約外 → 鈴
