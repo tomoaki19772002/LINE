@@ -79,6 +79,8 @@
   .mk6 { --c: #3949ab; --l: #e8eaf6; }
   .mk5:not(.on) { background: #fffafc; color: #edb7ca; border-color: #fdeef3; opacity: 1; }
   .mk4 { --c: #546e7a; --l: #eceff1; } .mk5 { --c: #d81b60; --l: #fce4ec; }
+  .cbwrap { position: relative; display: inline-flex; }
+  .undo { position: absolute; top: -9px; right: -7px; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: #fff; color: #c62828; border: 1px solid #c62828; font-size: 13px; line-height: 1; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
   .acts { display: flex; gap: 5px; flex: none; flex-wrap: nowrap; }
   .copy, .del { white-space: nowrap; font-size: 14px; padding: 8px 6px; min-width: 62px; }
   @media (max-width: 880px) {
@@ -354,7 +356,14 @@
       cb.onclick = doCopy; num.onclick = doCopy;
       var db = document.createElement('button'); db.className = 'del'; db.textContent = '削除';
       db.onclick = function () { send({ op: 'del', index: i }); };
-      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); var acts = document.createElement('span'); acts.className = 'acts'; acts.appendChild(cb); acts.appendChild(db); li.appendChild(st); li.appendChild(acts);
+      li.appendChild(mk); li.appendChild(num); li.appendChild(info); li.appendChild(memo); var acts = document.createElement('span'); acts.className = 'acts';
+      var cbw = document.createElement('span'); cbw.className = 'cbwrap'; cbw.appendChild(cb);
+      if (((marks[i] | 0) & 256) !== 0) {   // コピー済の角の「↩」で「コピー」に戻せる
+        var ub = document.createElement('button'); ub.className = 'undo'; ub.textContent = '↩'; ub.title = 'コピー済を取り消す';
+        ub.onclick = function () { send({ op: 'mark', index: i, flag: 8, on: false }); };
+        cbw.appendChild(ub);
+      }
+      acts.appendChild(cbw); acts.appendChild(db); li.appendChild(st); li.appendChild(acts);
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';
