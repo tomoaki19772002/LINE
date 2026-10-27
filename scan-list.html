@@ -139,8 +139,9 @@
     ['術後', /術後/], ['注射後', /注射後/], ['リジュセア', /リジュセア/], ['コンタクト', /コンタクト/],
     ['眼鏡処方', /眼鏡/], ['健康診断', /健康診断|健診|検診/]
   ];
-  var MENU_COLOR = { '初診': '#1565c0', '再診': '#78909c', '散瞳': '#7e57c2', '視野': '#00897b', '術前': '#ef6c00', '手術': '#ad1457',
-    '術後': '#6d4c41', '注射後': '#3949ab', 'リジュセア': '#00838f', 'コンタクト': '#558b2f', '眼鏡処方': '#b8860b', '健康診断': '#8d6e63' };
+  var MENU_COLOR = { '初診': '#0d47a1', '再診': '#bbdefb', '散瞳': '#6d4c41', '視野': '#455a64', '術前': '#43a047', '手術': '#fb8c00',
+    '術後': '#8e24aa', '注射後': '#8e24aa', 'リジュセア': '#10b981', 'コンタクト': '#ec407a', '眼鏡処方': '#b8860b', '健康診断': '#9e9d24' };
+  var MENU_DARK_TEXT = { '再診': true };   // 薄い色の札は文字を濃くする
   function norm(c) { return String(c).replace(/[^0-9]/g, '').replace(/^0+/, ''); }
   function showPdfInfo() {
     var el = $('pdfInfo');
@@ -365,7 +366,7 @@
       var mlist = (hit && hit.menus ? hit.menus : []).slice();
       if (hit && hit.first && mlist.indexOf('初診') < 0) mlist.unshift('初診');
       mlist.forEach(function (m) {
-        var c = document.createElement('span'); c.className = 'mchip'; c.textContent = m; c.style.background = MENU_COLOR[m] || '#78909c'; menusEl.appendChild(c);
+        var c = document.createElement('span'); c.className = 'mchip'; c.textContent = m; c.style.background = MENU_COLOR[m] || '#78909c'; if (MENU_DARK_TEXT[m]) c.style.color = '#0d47a1'; menusEl.appendChild(c);
       });
       var memo = document.createElement('input'); memo.className = 'memo'; memo.placeholder = 'メモ'; memo.maxLength = 400;
       memo.setAttribute('data-i', i); memo.value = memos[i] || '';
