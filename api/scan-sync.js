@@ -23,6 +23,7 @@ function cleanAppt(input) {
       inf: v.inf === true,
       infWhy: typeof v.infWhy === 'string' ? v.infWhy.slice(0, 12) : '',
       first: v.first === true,
+      menuRaw: typeof v.menuRaw === 'string' ? v.menuRaw.slice(0, 200) : '',
       menus: Array.isArray(v.menus) ? v.menus.filter(m => typeof m === 'string').map(m => m.slice(0, 8)).slice(0, 12) : [],
       memo: typeof v.memo === 'string' ? v.memo.slice(0, MAX_MEMO) : '',
       name: v.name.slice(0, 40),

@@ -142,6 +142,18 @@
   var MENU_COLOR = { '初診': '#0d47a1', '再診': '#bbdefb', '散瞳': '#6d4c41', '視野': '#455a64', '術前': '#43a047', '手術': '#fb8c00',
     '術後': '#8e24aa', '注射後': '#8e24aa', 'リジュセア': '#10b981', 'コンタクト': '#ec407a', '眼鏡処方': '#b8860b', '健康診断': '#9e9d24', '学校検診': '#00acc1' };
   var MENU_DARK_TEXT = { '再診': true };   // 薄い色の札は文字を濃くする
+  // メニュー文字列 → 表示する札の一覧。元の文字列を保存しておき、表示のたびにここで判定する
+  // （ルールを変えても、PDFを読み込み直さずに済むように）
+  function menuLabels(menu) {
+    var labels = MENU_RULES.filter(function (r) { return r[1].test(r[0] === '健康診断' ? menu.replace(/学校検診/g, '') : menu); }).map(function (r) { return r[0]; });
+    if (labels.indexOf('散瞳') >= 0) labels = labels.filter(function (l) { return l !== '再診'; });
+    return labels;
+  }
+  function menuLabelsMulti(raw) {   // 複数の予約枠は ' / ' で連結されているので、枠ごとに判定して合わせる
+    var out = [];
+    raw.split(' / ').forEach(function (m) { menuLabels(m).forEach(function (l) { if (out.indexOf(l) < 0) out.push(l); }); });
+    return out;
+  }
   function norm(c) { return String(c).replace(/[^0-9]/g, '').replace(/^0+/, ''); }
   function showPdfInfo() {
     var el = $('pdfInfo');
@@ -205,8 +217,7 @@
         // メニューは長いと「再診（下記以外）,初...」のように省略表示されるので「,初」も初診扱い
         var first = /初診|,初/.test(menu);
         // 診療メニューの種類（「散瞳」があるときは「再診」を出さない）
-        var labels = MENU_RULES.filter(function (r) { return r[1].test(r[0] === '健康診断' ? menu.replace(/学校検診/g, '') : menu); }).map(function (r) { return r[0]; });
-        if (labels.indexOf('散瞳') >= 0) labels = labels.filter(function (l) { return l !== '再診'; });
+        var labels = menuLabels(menu);
         // 備考（患者備考・クリニック備考）はメモに転記する。折り返した行も連結
         var remarks = [];
         if (cols.xPat !== null && cols.xCli !== null) {
@@ -215,9 +226,10 @@
           if (rp) remarks.push('【患者備考】' + rp);
           if (rc) remarks.push('【クリニック備考】' + rc);
         }
-        if (!out[key]) out[key] = { times: [], name: name, inf: false, infWhy: '', first: false, menus: [], memo: '' };
+        if (!out[key]) out[key] = { times: [], name: name, inf: false, infWhy: '', first: false, menus: [], menuRaw: '', memo: '' };
         if (why.length) { out[key].inf = true; out[key].infWhy = why.join('・'); }
         if (first) out[key].first = true;
+        if (menu && out[key].menuRaw.indexOf(menu) < 0) out[key].menuRaw += (out[key].menuRaw ? ' / ' : '') + menu;
         labels.forEach(function (l) { if (out[key].menus.indexOf(l) < 0) out[key].menus.push(l); });
         remarks.forEach(function (r) { if (out[key].memo.indexOf(r) < 0) out[key].memo += (out[key].memo ? ' ／ ' : '') + r; });
         if (out[key].times.indexOf(t.s) < 0) out[key].times.push(t.s);
@@ -363,7 +375,7 @@
         info.appendChild(ib);
       }
       var menusEl = document.createElement('span'); menusEl.className = 'menus';
-      var mlist = (hit && hit.menus ? hit.menus : []).slice();
+      var mlist = (hit ? (hit.menuRaw ? menuLabelsMulti(hit.menuRaw) : (hit.menus || [])) : []).slice();
       if (hit && hit.first && mlist.indexOf('初診') < 0) mlist.unshift('初診');
       mlist.forEach(function (m) {
         var c = document.createElement('span'); c.className = 'mchip'; c.textContent = m; c.style.background = MENU_COLOR[m] || '#78909c'; if (MENU_DARK_TEXT[m]) c.style.color = '#0d47a1'; menusEl.appendChild(c);
