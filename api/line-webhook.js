@@ -26,6 +26,13 @@ function toHalfWidthDigits(text) {
 const RESERVATION_URL = 'https://5.mfmb.jp/mobile/index.php?guid=ON&clinic_number=900618';
 const RESERVATION_NOTICE = '当院の予約専用サイトへ移動します。LINEと電話番号でログインすることも可能です。';
 
+const FOLLOW_MESSAGE = [
+  '友だち追加ありがとうございます。',
+  '川越あさひ眼科の公式LINEです。',
+  '・診察券は、画面下のメニュー「診察券」から登録できますが、診察券番号の発行がないと使用できません。',
+  '・個別のお問い合わせは、お電話（059-327-5652）でお願いいたします。'
+].join('\n');
+
 const INFO_NOTICE =
   '患者様個別のお問い合わせは仕組み上、当院スタッフが見れない状態です。個別のお問い合わせは当院へ直接お電話いただきますようお願いいたします。\n☎059-327-5652';
 
@@ -93,10 +100,7 @@ async function replyFaqMenu(replyToken) {
 
 async function handleEvent(event) {
   if (event.type === 'follow') {
-    await replyMessage(
-      event.replyToken,
-      '友だち追加ありがとうございます。\n外出される際は、受付番号（数字）をこのトークに送信してください。呼び出しの際にLINEでお知らせします。'
-    );
+    await replyMessage(event.replyToken, FOLLOW_MESSAGE);
     return;
   }
 
