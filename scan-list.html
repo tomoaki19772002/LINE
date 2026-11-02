@@ -26,7 +26,7 @@
   li.empty { background: transparent; border: 1px dashed #cfd8dc; }
   li.new { animation: flash 1.2s; }
   @keyframes flash { from { background: #fff59d; } to { background: #fff; } }
-  .gone { flex: 1; color: #b0bec5; text-decoration: line-through; font-size: 18px; }
+  .gone { flex: 1; color: #b0bec5; text-decoration: line-through; font-size: 17px; }
   .restore { background: #fff8e1; color: #f57f17; font-weight: bold; white-space: nowrap; }
   .no { width: 20px; color: #90a4ae; font-size: 14px; text-align: right; flex: none; }
   .num { flex: 1 0 auto; min-width: 100px; font-size: 26px; font-weight: bold; letter-spacing: 1px; font-variant-numeric: tabular-nums; word-break: break-all; }
@@ -51,8 +51,8 @@
   .mk2 { --c: #fb8c00; --l: #fff3e0; } .mk3 { --c: #8e24aa; --l: #f3e5f5; }
   .mk { background: var(--l); color: var(--c); opacity: .55; border-color: var(--l); }
   .mk.on { background: var(--c); color: #fff; opacity: 1; border-color: var(--c); }
-  .tm { flex: none; min-width: 56px; text-align: center; font-size: 17px; font-weight: bold; color: #37474f; border: 2px solid #90a4ae; border-radius: 8px; padding: 2px 4px; background: #fff; font-variant-numeric: tabular-nums; }
-  .memo { flex: 1 0 100%; order: 10; margin-left: 28px; max-width: calc(100% - 28px); font: inherit; font-size: 16px; padding: 10px; border: 1px solid #cfd8dc; border-radius: 8px; }
+  .tm { flex: none; min-width: 48px; text-align: center; font-size: 14px; font-weight: bold; color: #37474f; border: 2px solid #90a4ae; border-radius: 8px; padding: 2px 4px; background: #fff; font-variant-numeric: tabular-nums; }
+  .memo { flex: 1 0 100%; order: 10; margin-left: 28px; max-width: calc(100% - 28px); font: inherit; font-size: 16px; line-height: 1.4; padding: 8px 10px; resize: none; overflow: hidden; display: block; box-sizing: border-box; border: 1px solid #cfd8dc; border-radius: 8px; }
   .memo:focus { border-color: #00796b; outline: 0; }
   li.inf { background: #ffcdd2; border: 2px solid #e53935; }
   .infbadge { display: inline-block; background: #d32f2f; color: #fff; font-weight: bold; border-radius: 6px; padding: 3px 10px; font-size: 15px; margin-top: 2px; }
@@ -319,6 +319,10 @@
     grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up); grip.addEventListener('pointercancel', cn);
   }
 
+  // メモ欄は長い文でも切れないよう、内容に合わせて高さを自動で広げる
+  function fitMemo(el) { el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; }
+  window.addEventListener('resize', function () { Array.prototype.forEach.call(document.querySelectorAll('.memo'), fitMemo); });
+
   function render() {
     // メモ入力中に他端末の更新で再描画されても、入力途中の文字とカーソルを保つ
     var ae = document.activeElement, keep = null;
@@ -336,7 +340,10 @@
       if (v === null) {
         li.className = 'empty';
         if (trash[i]) {
-          var g = document.createElement('span'); g.className = 'gone'; g.textContent = trash[i].code;
+          var g = document.createElement('span'); g.className = 'gone';
+          var gc = trash[i].code, gh = appt[norm(gc)], gt = '';
+          if (gh) gt = gh.times.join('/'); else if (apptLoaded && !isExempt(gc)) gt = '予約外';
+          g.textContent = gc + (gt ? '　' + gt : '') + (gh && gh.name ? '　' + gh.name : '');
           var rb = document.createElement('button'); rb.className = 'restore'; rb.textContent = '復活';
           rb.onclick = function () { send({ op: 'restore', index: i }); };
           li.appendChild(g); li.appendChild(rb);
@@ -380,10 +387,11 @@
       mlist.forEach(function (m) {
         var c = document.createElement('span'); c.className = 'mchip'; c.textContent = m; c.style.background = MENU_COLOR[m] || '#78909c'; if (MENU_DARK_TEXT[m]) c.style.color = '#0d47a1'; menusEl.appendChild(c);
       });
-      var memo = document.createElement('input'); memo.className = 'memo'; memo.placeholder = 'メモ'; memo.maxLength = 400;
+      var memo = document.createElement('textarea'); memo.className = 'memo'; memo.rows = 1; memo.placeholder = 'メモ'; memo.maxLength = 400;
       memo.setAttribute('data-i', i); memo.value = memos[i] || '';
       memo.onchange = function () { if (memo.value !== (memos[i] || '')) send({ op: 'memo', index: i, text: memo.value }); };
-      memo.onkeydown = function (e) { if (e.key === 'Enter') { memo.blur(); $('inp').focus(); } };
+      memo.oninput = function () { fitMemo(memo); };
+      memo.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); memo.blur(); $('inp').focus(); } };   // Shift+Enterは改行
       var st = document.createElement('span'); st.className = 'st';
       [['1診', 6], ['変わりない', 4], ['よくなった', 5]].forEach(function (d) {
         var b = document.createElement('button'); b.className = 'mk mk' + d[1] + ((marks[i] | 0) & (1 << d[1]) ? ' on' : ''); b.textContent = d[0];
@@ -407,6 +415,7 @@
       ol.appendChild(li);
     });
     $('count').textContent = live + ' 件';
+    Array.prototype.forEach.call(ol.querySelectorAll('.memo'), fitMemo);
     newIdx = -1;
     if (keep) {
       var again = ol.querySelector('.memo[data-i="' + keep.i + '"]');
