@@ -577,7 +577,7 @@
   $('inp').focus();
   // バーコードリーダーはキー入力として届くので、他をクリックしても入力欄へ戻す
   document.addEventListener('click', function (e) {
-    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') $('inp').focus();
+    if (['BUTTON', 'INPUT', 'TEXTAREA', 'LABEL'].indexOf(e.target.tagName) < 0) $('inp').focus();
   });
 })();
 </script>
