@@ -241,13 +241,23 @@
       min-height: 40px;
     }
 
-    .registered-chip {
+    .registered-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       border: 1.5px solid #90caf9;
       background: #e3f2fd;
+      border-radius: 24px;
+      padding-right: 8px;
+    }
+
+    .registered-chip {
+      border: none;
+      background: transparent;
       color: #1565c0;
       font-size: 1.1rem;
       font-weight: bold;
-      padding: 8px 18px;
+      padding: 8px 4px 8px 18px;
       border-radius: 24px;
       letter-spacing: 0.03em;
       cursor: pointer;
@@ -255,6 +265,50 @@
     }
     .registered-chip:hover  { background: #bbdefb; }
     .registered-chip:active { transform: scale(0.95); }
+
+    .registered-del {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.08);
+      color: #1565c0;
+      font-size: 0.9rem;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .registered-del:hover { background: rgba(0,0,0,0.18); }
+
+    .undo-row {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.85rem;
+      color: #607d8b;
+    }
+    .undo-row[hidden] { display: none; }
+    .undo-btn {
+      padding: 6px 16px;
+      font-size: 0.85rem;
+      border: 1.5px solid #ffb74d;
+      border-radius: 20px;
+      background: #fff8e1;
+      color: #e65100;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .undo-btn:hover { background: #ffecb3; }
+    .undo-btn:disabled { opacity: 0.5; cursor: default; }
+    .registered-note {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: #90a4ae;
+      line-height: 1.5;
+    }
 
     .registered-empty {
       color: #b0bec5;
@@ -309,6 +363,11 @@
     <div class="registered-list" id="registeredList">
       <span class="registered-empty" id="registeredEmpty">現在登録はありません</span>
     </div>
+    <div class="undo-row" id="undoRow" hidden>
+      <span id="undoText"></span>
+      <button type="button" class="undo-btn" id="undoBtn">元に戻す</button>
+    </div>
+    <p class="registered-note">番号の右の×で登録を消せます。患者さんへの通知は送られません。</p>
   </div>
 
   <div class="history-panel">
@@ -471,6 +530,9 @@
       }
       registeredEmptyEl.style.display = 'none';
       numbers.forEach(n => {
+        const item = document.createElement('span');
+        item.className = 'registered-item';
+
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'registered-chip';
@@ -480,9 +542,69 @@
           inputNum = n;
           renderInput();
         });
-        registeredListEl.appendChild(chip);
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'registered-del';
+        del.textContent = '×';
+        del.title = `${n}番の登録を消す（患者さんには通知されません）`;
+        del.addEventListener('click', () => clearRegistration(n));
+
+        item.appendChild(chip);
+        item.appendChild(del);
+        registeredListEl.appendChild(item);
       });
     }
+
+    // ── 強制クリア（LINEは送らない）と、直前1回分の復元 ──────────
+    async function clearRegistration(n) {
+      try {
+        const res = await fetch('/api/line-clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: n })
+        });
+        const data = await res.json();
+        if (data.cleared) showToast(`${n}番の登録を消しました`);
+      } catch (e) {
+        showToast('クリアに失敗しました。通信環境を確認してください');
+      }
+    }
+
+    const undoRowEl  = document.getElementById('undoRow');
+    const undoTextEl = document.getElementById('undoText');
+    const undoBtn    = document.getElementById('undoBtn');
+
+    // 復元できる番号（サーバー側に1件だけ保持）。複数端末でも同じ表示になる
+    db.ref('lineClearBackup/number').on('value', snap => {
+      const n = snap.val();
+      undoRowEl.hidden = !n;
+      if (n) undoTextEl.textContent = `直前に消した ${n}番 を戻せます`;
+    });
+
+    undoBtn.addEventListener('click', async () => {
+      undoBtn.disabled = true;
+      try {
+        const res = await fetch('/api/line-clear', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'undo' })
+        });
+        const data = await res.json();
+        if (data.restored) {
+          knownRegisteredNumbers.add(data.number); // 「登録されました」の通知は出さない
+          showToast(`${data.number}番の登録を元に戻しました`);
+        } else if (data.reason === 'occupied') {
+          showToast(`${data.number}番は新しく登録し直されているため戻せません`);
+        } else {
+          showToast('戻せる登録はありません');
+        }
+      } catch (e) {
+        showToast('元に戻せませんでした。通信環境を確認してください');
+      } finally {
+        undoBtn.disabled = false;
+      }
+    });
 
     let toastTimer = null;
     function showToast(msg) {
