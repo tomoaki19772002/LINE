@@ -44,8 +44,32 @@ const FAQ_LIST = [
   },
   {
     label: '②外出できますか？',
-    answer:
-      '②外出できますか？\n\n受付および検査まで終了している方は、診察までの待ち時間に外出することができますが、受付でのLINE手続きが必須となります。ご希望の方は受付までお声をおかけください。'
+    // 太字を使うため、この回答だけFlexメッセージで送る
+    messages: [{
+      type: 'flex',
+      altText:
+        '【外出時のご注意】受付・検査後、診察までの外出が可能です。ただし、受付でのLINE手続きが必須となります。ご希望の方は、お気軽に受付スタッフへお声がけください。',
+      contents: {
+        type: 'bubble',
+        size: 'mega',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          paddingAll: '18px',
+          contents: [{
+            type: 'text',
+            wrap: true,
+            size: 'md',
+            color: '#263238',
+            contents: [
+              { type: 'span', text: '【外出時のご注意】\n受付・検査後、診察までの外出が可能です。\nただし、' },
+              { type: 'span', text: '受付でのLINE手続きが必須', weight: 'bold' },
+              { type: 'span', text: 'となります。\nご希望の方は、お気軽に受付スタッフへお声がけください。' }
+            ]
+          }]
+        }
+      }
+    }]
   },
   {
     label: '③自費診療はどんなものがありますか？',
@@ -109,7 +133,10 @@ async function handleEvent(event) {
     const faqIndex = Number(params.get('faq'));
     const faqItem = FAQ_LIST[faqIndex];
     if (faqItem) {
-      await replyMessage(event.replyToken, faqItem.answer);
+      await replyMessages(
+        event.replyToken,
+        faqItem.messages || [{ type: 'text', text: faqItem.answer }]
+      );
     }
     return;
   }
