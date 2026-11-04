@@ -546,9 +546,9 @@
   const patInput = document.getElementById('patientNumber');
 
   // フォーカスが当たったら全選択（次のキー入力で即置き換え）
-  patInput.addEventListener('focus', () => {
-    setTimeout(() => patInput.select(), 0);
-  });
+  patInput.addEventListener('focus', () => patInput.select());
+  // mouseup でブラウザがカーソル位置を再設定するのを防ぐ
+  patInput.addEventListener('mouseup', e => e.preventDefault());
 
   document.addEventListener('keydown', e => {
     const isDigit = (e.key >= '0' && e.key <= '9') ||
