@@ -204,6 +204,7 @@
         var no = row.filter(function (i) { return i.x >= xNo && i.x < xMenu && /^\d+$/.test(i.s); })[0];
         if (!no) return;
         var key = norm(no.s);
+        if (!key) return;   // カルテ番号が「0」など(正規化すると空)の行は照合できないので除外
         // 「マ」列に「感染」と書かれている患者（文字が折り返しても拾えるよう行の範囲を連結）
         var nx = ts[ts.indexOf(t) + 1], lo = nx ? nx.y + 4 : t.y - 60;
         function cellText(x0, x1) {

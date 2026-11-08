@@ -18,7 +18,7 @@ function cleanAppt(input) {
   const out = {};
   for (const k of keys) {
     const v = input[k];
-    if (!/^\d{1,12}$/.test(k) || !v || typeof v.name !== 'string' || !Array.isArray(v.times)) return null;
+    if (!/^\d{1,12}$/.test(k) || !v || typeof v.name !== 'string' || !Array.isArray(v.times)) continue; // 不正な1件で全体を拒否しない
     out[k] = {
       inf: v.inf === true,
       infWhy: typeof v.infWhy === 'string' ? v.infWhy.slice(0, 12) : '',
