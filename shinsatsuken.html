@@ -604,12 +604,14 @@
         renderCards();
 
         // お支払い用カード・診療明細書は、まだ一般公開しない。URLに ?pay=1 が付いているときだけ表示する
+        // サーバー側の PAY_PUBLIC=1 になれば、URLに関係なく全員に表示する
         const flags = new URLSearchParams(location.search);
-        if (flags.get('pay') === '1' || flags.get('doc') === '1') {
+        const showPay = cfg.payPublic || flags.get('pay') === '1';
+        if (showPay || flags.get('doc') === '1') {
           docMode = true;
           try { await loadStatements(); } catch (e) { if (e.message === 'relogin') return; }
         }
-        if (flags.get('pay') === '1') {
+        if (showPay) {
           try { await initPay(); } catch (e) { if (e.message === 'relogin') return; }
         }
       } catch (err) {
