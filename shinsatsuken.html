@@ -7,6 +7,7 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://js.stripe.com/v3/"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -86,6 +87,12 @@
     .form-error { color: #c62828; font-size: 0.85rem; min-height: 1.2em; }
     .privacy { font-size: 0.75rem; color: #78909c; line-height: 1.6; }
 
+    /* ── お支払い用カード（?pay=1 のときだけ表示） ── */
+    .pay-saved { font-size: 1.05rem; font-weight: bold; color: #263238; line-height: 1.6; }
+    .pay-saved small { display: block; font-weight: normal; font-size: 0.75rem; color: #90a4ae; }
+    .pay-consent { display: flex; gap: 8px; align-items: flex-start; font-size: 0.85rem; line-height: 1.6; color: #455a64; }
+    .pay-consent input { margin-top: 4px; flex-shrink: 0; width: 18px; height: 18px; }
+
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -120,6 +127,34 @@
         <button class="btn danger" id="deleteBtn">この診察券を削除</button>
       </div>
     </div>
+
+    <!-- お支払い用カード（URLに ?pay=1 が付いているときだけ表示） -->
+    <section class="form" id="payBox" hidden>
+      <h2>お支払い用カード</h2>
+      <div class="pay-saved" id="paySaved"></div>
+
+      <div id="payFormArea" hidden>
+        <div id="paymentElement"></div>
+        <label class="pay-consent">
+          <input type="checkbox" id="payConsent">
+          <span>診療費を、登録したクレジットカードに後日請求することに同意します。</span>
+        </label>
+        <div class="form-error" id="payError"></div>
+        <div class="actions">
+          <button type="button" class="btn primary" id="paySaveBtn">カードを登録する</button>
+          <button type="button" class="btn ghost" id="payCancelBtn">キャンセル</button>
+        </div>
+      </div>
+
+      <div class="actions" id="payActions">
+        <button type="button" class="btn primary" id="payAddBtn">カードを登録</button>
+        <button type="button" class="btn danger" id="payDeleteBtn" hidden>カードを削除</button>
+      </div>
+      <p class="privacy">
+        カード番号は決済会社（Stripe）へ直接送信され、当院ではカード番号を保存しません。
+        診療費は、会計のたびに登録カードへ請求されます。
+      </p>
+    </section>
 
     <!-- 登録フォーム -->
     <form class="form" id="form" hidden novalidate>
@@ -271,6 +306,138 @@
       }
     });
 
+    // ── お支払い用カード（Stripe） ────────────────────────────
+    let stripe = null;
+    let stripeElements = null;
+
+    async function payApi(method, body) {
+      const res = await fetch('/api/pay-card', {
+        method,
+        headers: Object.assign(
+          { Authorization: 'Bearer ' + idToken },
+          body ? { 'Content-Type': 'application/json' } : {}
+        ),
+        body: body ? JSON.stringify(body) : undefined
+      });
+      if (res.status === 401) {
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        throw new Error('relogin');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.error || 'error'), { status: res.status });
+      return data;
+    }
+
+    const BRAND_NAMES = { visa: 'Visa', mastercard: 'Mastercard', jcb: 'JCB', amex: 'American Express', diners: 'Diners', discover: 'Discover', unionpay: 'UnionPay' };
+
+    function renderPaySaved(card) {
+      const box = el('paySaved');
+      if (card) {
+        const exp = card.expMonth && card.expYear
+          ? '有効期限 ' + String(card.expMonth).padStart(2, '0') + '/' + String(card.expYear).slice(-2) : '';
+        box.innerHTML = '';
+        box.append((BRAND_NAMES[card.brand] || 'カード') + ' •••• ' + card.last4);
+        const small = document.createElement('small');
+        small.textContent = exp + '　登録日 ' + new Date(card.consentAt).toLocaleDateString('ja-JP');
+        box.appendChild(small);
+      } else {
+        box.textContent = 'カードは未登録です';
+      }
+      el('payAddBtn').textContent = card ? 'カードを変更' : 'カードを登録';
+      el('payDeleteBtn').hidden = !card;
+    }
+
+    function closePayForm() {
+      if (stripeElements) { stripeElements.getElement('payment') && stripeElements.getElement('payment').destroy(); }
+      stripeElements = null;
+      el('payConsent').checked = false;
+      el('payError').textContent = '';
+      el('payFormArea').hidden = true;
+      el('payActions').hidden = false;
+    }
+
+    async function openPayForm() {
+      el('payError').textContent = '';
+      el('payAddBtn').disabled = true;
+      try {
+        const { clientSecret } = await payApi('POST', { action: 'setup' });
+        stripeElements = stripe.elements({ clientSecret, locale: 'ja' });
+        stripeElements.create('payment').mount('#paymentElement');
+        el('payActions').hidden = true;
+        el('payFormArea').hidden = false;
+      } catch (err) {
+        if (err.message !== 'relogin') alert('カード登録を開始できませんでした。通信環境をご確認ください');
+      } finally {
+        el('payAddBtn').disabled = false;
+      }
+    }
+
+    async function completePay(setupIntentId) {
+      const data = await payApi('POST', { action: 'complete', setupIntentId, consent: true });
+      renderPaySaved(data.card);
+    }
+
+    async function savePayCard() {
+      if (!el('payConsent').checked) {
+        el('payError').textContent = '後日請求への同意にチェックを入れてください';
+        return;
+      }
+      el('payError').textContent = '';
+      el('paySaveBtn').disabled = true;
+      try {
+        // 3Dセキュアで別画面に移動した場合に備え、同意を一時保存する
+        try { sessionStorage.setItem('payConsent', '1'); } catch (e) {}
+        const result = await stripe.confirmSetup({
+          elements: stripeElements,
+          confirmParams: { return_url: location.origin + location.pathname + '?pay=1' },
+          redirect: 'if_required'
+        });
+        if (result.error) {
+          el('payError').textContent = result.error.message || 'カードを登録できませんでした';
+          return;
+        }
+        await completePay(result.setupIntent.id);
+        try { sessionStorage.removeItem('payConsent'); } catch (e) {}
+        closePayForm();
+      } catch (err) {
+        if (err.message !== 'relogin') el('payError').textContent = 'カードを登録できませんでした。もう一度お試しください';
+      } finally {
+        el('paySaveBtn').disabled = false;
+      }
+    }
+
+    async function initPay() {
+      const info = await payApi('GET');
+      stripe = Stripe(info.publishableKey);
+      renderPaySaved(info.card);
+      el('payBox').hidden = false;
+
+      el('payAddBtn').addEventListener('click', openPayForm);
+      el('payCancelBtn').addEventListener('click', closePayForm);
+      el('paySaveBtn').addEventListener('click', savePayCard);
+      el('payDeleteBtn').addEventListener('click', async () => {
+        if (!confirm('登録したお支払い用カードを削除しますか？')) return;
+        try {
+          const data = await payApi('DELETE');
+          renderPaySaved(data.card);
+        } catch (err) {
+          if (err.message !== 'relogin') alert('削除に失敗しました。通信環境をご確認ください');
+        }
+      });
+
+      // 3Dセキュアの認証後にこのページへ戻ってきた場合の登録完了処理
+      const q = new URLSearchParams(location.search);
+      const returned = q.get('setup_intent');
+      if (returned && q.get('redirect_status') === 'succeeded') {
+        let consented = false;
+        try { consented = sessionStorage.getItem('payConsent') === '1'; } catch (e) {}
+        if (consented) {
+          try { await completePay(returned); sessionStorage.removeItem('payConsent'); } catch (e) {}
+        }
+      }
+    }
+
     async function main() {
       try {
         const cfgRes = await fetch('/api/liff-config');
@@ -285,6 +452,11 @@
 
         cards = (await api('GET')).cards;
         renderCards();
+
+        // お支払い用カードは、まだ一般公開しない。URLに ?pay=1 が付いているときだけ表示する
+        if (new URLSearchParams(location.search).get('pay') === '1') {
+          try { await initPay(); } catch (e) { if (e.message === 'relogin') return; }
+        }
       } catch (err) {
         if (err.message === 'relogin') return;
         fatal('読み込みに失敗しました。通信環境をご確認のうえ、開き直してください。');

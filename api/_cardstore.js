@@ -83,4 +83,4 @@ function parseCardInput(input) {
   return { cardNumber, name, birth };
 }
 
-module.exports = { MAX_CARDS, loadCards, saveCards, parseCardInput, encrypt, decrypt };
+module.exports = { MAX_CARDS, loadCards, saveCards, parseCardInput, encrypt, decrypt, deriveKey, userPath };
