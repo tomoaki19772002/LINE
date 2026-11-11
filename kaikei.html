@@ -132,6 +132,13 @@
           <label class="field">診療日
             <input type="date" id="docDateInput">
           </label>
+          <label class="field">種類
+            <select id="docKindInput" style="font-size:1.1rem;padding:10px 12px;border:1.5px solid #b0bec5;border-radius:10px;background:#fff">
+              <option value="insurance">保険診療分</option>
+              <option value="self">自費分</option>
+              <option value="other">その他</option>
+            </select>
+          </label>
           <label class="field">PDFファイル（3MBまで）
             <input type="file" id="docFileInput" accept="application/pdf">
           </label>
@@ -395,6 +402,7 @@
 
     // ── 診療明細書 ──
     let docCardNumber = '';
+    const KIND_NAMES = { insurance: '保険診療分', self: '自費分', other: 'その他' };
 
     function todayStr() {
       const d = new Date();
@@ -454,12 +462,12 @@
         row.className = 'log-row';
         row.style.alignItems = 'center';
         const label = document.createElement('span');
-        label.textContent = s.date.replace(/-/g, '/') + ' の明細書';
+        label.textContent = s.date.replace(/-/g, '/') + '　' + (KIND_NAMES[s.kind] || 'その他') + 'の明細書';
         const del = document.createElement('button');
         del.className = 'btn ghost small';
         del.textContent = '削除';
         del.addEventListener('click', async () => {
-          if (!confirm(s.date + ' の明細書を削除しますか？')) return;
+          if (!confirm(s.date + '　' + (KIND_NAMES[s.kind] || 'その他') + 'の明細書を削除しますか？')) return;
           try {
             renderDoc(await api({ action: 'doc-delete', cardNumber: docCardNumber, id: s.id }));
           } catch (err) {
@@ -508,7 +516,9 @@
           r.onerror = reject;
           r.readAsDataURL(file);
         });
-        renderDoc(await api({ action: 'doc-upload', cardNumber: docCardNumber, date, pdfBase64: b64 }));
+        renderDoc(await api({
+          action: 'doc-upload', cardNumber: docCardNumber, date, kind: el('docKindInput').value, pdfBase64: b64
+        }));
         el('docFileInput').value = '';
         setMsg('docMsg', 'アップロードしました', 'ok');
       } catch (err) {

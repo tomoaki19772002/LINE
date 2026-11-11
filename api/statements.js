@@ -32,7 +32,7 @@ module.exports = async (req, res) => {
         result.push({
           cardNumber: c.cardNumber,
           name: c.name,
-          statements: items.map(i => ({ id: i.id, date: i.date }))
+          statements: items.map(i => ({ id: i.id, date: i.date, kind: i.kind }))
         });
       }
       res.status(200).json({ cards: result });

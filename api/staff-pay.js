@@ -4,7 +4,7 @@ const { getDb } = require('./_firebase');
 const { encrypt, decrypt } = require('./_cardstore');
 const { loadAllRecords, loadRecordById, saveRecordById, loadCardsOf } = require('./_paystore');
 const {
-  MAX_PDF_BYTES, getVerifiedOwner, setVerifiedOwner, saveStatement, listStatements, deleteStatement
+  MAX_PDF_BYTES, KINDS, getVerifiedOwner, setVerifiedOwner, saveStatement, listStatements, deleteStatement
 } = require('./_docstore');
 
 // 受付スタッフ用：カードの本人確認、診察券番号での請求、請求履歴。
@@ -286,8 +286,9 @@ module.exports = async (req, res) => {
     if (body.action === 'doc-upload') {
       const cardNumber = parseCardNumber(body.cardNumber);
       const date = String(body.date || '');
+      const kind = String(body.kind || '');
       const b64 = String(body.pdfBase64 || '');
-      if (!cardNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !b64) {
+      if (!cardNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !KINDS[kind] || !b64) {
         res.status(400).json({ error: 'invalid input' });
         return;
       }
@@ -300,7 +301,7 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'not a pdf' });
         return;
       }
-      await saveStatement(cardNumber, date, pdf);
+      await saveStatement(cardNumber, date, kind, pdf);
       res.status(200).json(await docOverview(cardNumber));
       return;
     }

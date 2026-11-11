@@ -27,11 +27,14 @@ async function setVerifiedOwner(cardNumber, ownerId) {
 // ── 明細書 ──
 // PDF本体は statementBlobs に、AES-256-GCMで暗号化して置く（一覧用の情報は statements に別に置く）。
 // 暗号鍵はサーバーだけが持つため、データベースが公開読み取りでも、中身は読めない。
-async function saveStatement(cardNumber, date, pdfBuffer) {
+// 明細書の種類：保険診療分・自費分など。同じ日に何枚でも置ける
+const KINDS = { insurance: '保険診療分', self: '自費分', other: 'その他' };
+
+async function saveStatement(cardNumber, date, kind, pdfBuffer) {
   const nKey = numberKey(cardNumber);
   const id = crypto.randomBytes(8).toString('hex');
   await getDb().ref(`statementBlobs/${nKey}/${id}`).set(encrypt({ pdf: pdfBuffer.toString('base64') }));
-  await getDb().ref(`statements/${nKey}/${id}`).set(encrypt({ date, size: pdfBuffer.length, at: Date.now() }));
+  await getDb().ref(`statements/${nKey}/${id}`).set(encrypt({ date, kind, size: pdfBuffer.length, at: Date.now() }));
   return id;
 }
 
@@ -42,7 +45,7 @@ async function listStatements(cardNumber) {
   for (const [id, rec] of Object.entries(raw)) {
     try {
       const m = decrypt(rec);
-      items.push({ id, date: m.date, at: m.at });
+      items.push({ id, date: m.date, kind: KINDS[m.kind] ? m.kind : 'other', at: m.at });
     } catch (e) {
       // 読めない記録は飛ばす
     }
@@ -91,7 +94,7 @@ async function resolveViewToken(token) {
 }
 
 module.exports = {
-  MAX_PDF_BYTES, numberKey, getVerifiedOwner, setVerifiedOwner,
+  MAX_PDF_BYTES, KINDS, numberKey, getVerifiedOwner, setVerifiedOwner,
   saveStatement, listStatements, deleteStatement, readStatementPdf,
   issueViewToken, resolveViewToken
 };
