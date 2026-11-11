@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex">
-  <title>LINE会計（カード請求） | 川越あさひ眼科</title>
+  <title>LINE会計・診療明細書 | 川越あさひ眼科</title>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -76,8 +76,8 @@
   </style>
 </head>
 <body>
-  <h1>LINE会計（カード請求）</h1>
-  <p class="sub-lead">LINEで登録された診察券・クレジットカードに、診療費を請求します。請求の前に、必ず診察券と本人を確認してください。</p>
+  <h1>LINE会計・診療明細書</h1>
+  <p class="sub-lead">LINEで登録された診察券・クレジットカードに診療費を請求し、診療明細書（PDF）を届けます。どちらも、診察券と本人を確認してから操作してください。</p>
 
   <!-- 合言葉 -->
   <div class="panel" id="loginPanel">
@@ -110,6 +110,36 @@
           <button class="btn green" id="chargeBtn" style="align-self:flex-end">請求する</button>
         </div>
         <div class="msg" id="chargeMsg"></div>
+      </div>
+    </div>
+
+    <!-- 診療明細書 -->
+    <div class="panel">
+      <h2>診療明細書（PDF）</h2>
+      <p class="hint">患者さんがLINEの診察券から見られるようにします。先に、診察券と本人を確認して「確認済みにする」を押してください。確認済みの診察券を持つ本人だけが、明細書を開けます。</p>
+      <div class="row">
+        <label class="field">診察券番号
+          <input type="text" id="docNumberInput" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="例：12345">
+        </label>
+        <button class="btn" id="docSearchBtn" style="align-self:flex-end">検索</button>
+      </div>
+      <div class="msg" id="docMsg"></div>
+
+      <div id="docArea" hidden>
+        <div id="docOwners"></div>
+
+        <div class="row" style="margin-top:12px">
+          <label class="field">診療日
+            <input type="date" id="docDateInput">
+          </label>
+          <label class="field">PDFファイル（3MBまで）
+            <input type="file" id="docFileInput" accept="application/pdf">
+          </label>
+          <button class="btn green" id="docUploadBtn" style="align-self:flex-end">アップロード</button>
+        </div>
+
+        <h2 style="margin-top:16px;font-size:1rem">アップロード済み</h2>
+        <div id="docStatements"></div>
       </div>
     </div>
 
@@ -362,6 +392,132 @@
       }
     }
     el('refreshLogBtn').addEventListener('click', loadLog);
+
+    // ── 診療明細書 ──
+    let docCardNumber = '';
+
+    function todayStr() {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    el('docDateInput').value = todayStr();
+
+    function renderDoc(data) {
+      // 登録している人
+      const ownersBox = el('docOwners');
+      ownersBox.innerHTML = '';
+      if (data.owners.length === 0) {
+        ownersBox.innerHTML = '<span class="empty">この診察券番号を登録している患者さんは、まだいません（アップロードは可能です）</span>';
+      }
+      if (data.owners.length > 1) {
+        const warn = document.createElement('div');
+        warn.className = 'hint';
+        warn.style.color = '#e65100';
+        warn.textContent = '⚠ 同じ診察券番号を、複数の人が登録しています。診察券と本人を確かめて、正しい方だけを確認済みにしてください。';
+        ownersBox.appendChild(warn);
+      }
+      data.owners.forEach(o => {
+        const row = document.createElement('div');
+        row.className = 'card-row';
+        row.style.padding = '6px 0';
+        const text = document.createElement('span');
+        text.textContent = o.name + ' 様　' + o.birth.replace(/-/g, '/') + '生' + (o.verified ? '　✓確認済み' : '');
+        row.appendChild(text);
+        if (!o.verified) {
+          const btn = document.createElement('button');
+          btn.className = 'btn small';
+          btn.textContent = '確認済みにする';
+          btn.addEventListener('click', async () => {
+            const others = data.owners.some(x => x.verified) ? '\n※すでに確認済みの別の人は、取り消されます。' : '';
+            if (!confirm('診察券 ' + docCardNumber + '（' + o.name + ' 様）を、診察券と本人で確認しましたか？' + others)) return;
+            btn.disabled = true;
+            try {
+              renderDoc(await api({ action: 'doc-verify', cardNumber: docCardNumber, ownerId: o.ownerId }));
+            } catch (err) {
+              btn.disabled = false;
+              alert('確認済みにできませんでした');
+            }
+          });
+          row.appendChild(btn);
+        }
+        ownersBox.appendChild(row);
+      });
+
+      // アップロード済み
+      const stBox = el('docStatements');
+      stBox.innerHTML = '';
+      if (data.statements.length === 0) {
+        stBox.innerHTML = '<span class="empty">まだありません</span>';
+      }
+      data.statements.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        row.style.alignItems = 'center';
+        const label = document.createElement('span');
+        label.textContent = s.date.replace(/-/g, '/') + ' の明細書';
+        const del = document.createElement('button');
+        del.className = 'btn ghost small';
+        del.textContent = '削除';
+        del.addEventListener('click', async () => {
+          if (!confirm(s.date + ' の明細書を削除しますか？')) return;
+          try {
+            renderDoc(await api({ action: 'doc-delete', cardNumber: docCardNumber, id: s.id }));
+          } catch (err) {
+            alert('削除できませんでした');
+          }
+        });
+        row.append(label, del);
+        stBox.appendChild(row);
+      });
+      el('docArea').hidden = false;
+    }
+
+    async function docSearch() {
+      const cardNumber = el('docNumberInput').value.trim();
+      if (!cardNumber) return;
+      el('docSearchBtn').disabled = true;
+      setMsg('docMsg', '検索中...', '');
+      try {
+        const data = await api({ action: 'doc-candidates', cardNumber });
+        docCardNumber = cardNumber.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+        setMsg('docMsg', '', '');
+        renderDoc(data);
+      } catch (err) {
+        if (err.status === 401) { tryLogin(); return; }
+        el('docArea').hidden = true;
+        setMsg('docMsg', '検索に失敗しました。診察券番号（数字）を確認してください', 'err');
+      } finally {
+        el('docSearchBtn').disabled = false;
+      }
+    }
+    el('docSearchBtn').addEventListener('click', docSearch);
+    el('docNumberInput').addEventListener('keydown', e => { if (e.key === 'Enter') docSearch(); });
+    el('docNumberInput').addEventListener('input', () => { el('docArea').hidden = true; setMsg('docMsg', '', ''); });
+
+    el('docUploadBtn').addEventListener('click', async () => {
+      const file = el('docFileInput').files[0];
+      const date = el('docDateInput').value;
+      if (!file || !date) { setMsg('docMsg', '診療日とPDFファイルを選んでください', 'warn'); return; }
+      if (file.size > 3 * 1024 * 1024) { setMsg('docMsg', 'ファイルが大きすぎます（3MBまで）', 'err'); return; }
+      el('docUploadBtn').disabled = true;
+      setMsg('docMsg', 'アップロード中...', '');
+      try {
+        const b64 = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result).split(',')[1] || '');
+          r.onerror = reject;
+          r.readAsDataURL(file);
+        });
+        renderDoc(await api({ action: 'doc-upload', cardNumber: docCardNumber, date, pdfBase64: b64 }));
+        el('docFileInput').value = '';
+        setMsg('docMsg', 'アップロードしました', 'ok');
+      } catch (err) {
+        if (err.status === 401) { tryLogin(); return; }
+        setMsg('docMsg', err.message === 'not a pdf' ? 'PDFファイルではありません' : 'アップロードに失敗しました', 'err');
+      } finally {
+        el('docUploadBtn').disabled = false;
+      }
+    });
 
     if (pin) tryLogin();
   </script>

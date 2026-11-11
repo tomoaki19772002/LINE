@@ -92,6 +92,8 @@
     .pay-saved small { display: block; font-weight: normal; font-size: 0.75rem; color: #90a4ae; }
     .pay-consent { display: flex; gap: 8px; align-items: flex-start; font-size: 0.85rem; line-height: 1.6; color: #455a64; }
     .pay-consent input { margin-top: 4px; flex-shrink: 0; width: 18px; height: 18px; }
+    .doc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eceff1; font-size: 0.95rem; }
+    .doc-note { font-size: 0.85rem; color: #607d8b; line-height: 1.7; }
 
     [hidden] { display: none !important; }
   </style>
@@ -120,6 +122,15 @@
           <div class="card-number" id="cardNumber"></div>
           <div class="hint">受付でこの画面をご提示ください。<br>QRが読み取りにくい場合は画面の明るさを上げてください。</div>
         </div>
+      </div>
+
+      <!-- 診療明細書（URLに ?pay=1 または ?doc=1 が付いているときだけ表示） -->
+      <div class="form" id="docBox" style="margin-top:16px" hidden>
+        <h2>診療明細書</h2>
+        <div id="docList"></div>
+        <p class="privacy">
+          受付で診察券の確認が済んだ診察券だけ、明細書を表示できます。PDFは、ボタンを押してから5分間だけ開けるURLで表示します。
+        </p>
       </div>
 
       <div class="actions" style="margin-top:16px">
@@ -200,8 +211,9 @@
       show('fatal');
     }
 
-    async function api(method, query = '', body) {
-      const res = await fetch('/api/cards' + query, {
+    async function api(method, query = '', body, path = '/api/cards', bodyOverride) {
+      if (bodyOverride) body = bodyOverride;
+      const res = await fetch(path + query, {
         method,
         headers: Object.assign(
           { Authorization: 'Bearer ' + idToken },
@@ -247,6 +259,69 @@
         });
       }
       show('cardView');
+      renderStatements();
+    }
+
+    // ── 診療明細書 ──
+    let docMode = false;
+    let docCards = [];      // 受付で確認済みの診察券ごとの明細書一覧
+
+    function renderStatements() {
+      el('docBox').hidden = !docMode;
+      if (!docMode || !cards[selected]) return;
+      const list = el('docList');
+      list.innerHTML = '';
+      const entry = docCards.find(d => d.cardNumber === cards[selected].cardNumber);
+
+      if (!entry) {
+        const note = document.createElement('p');
+        note.className = 'doc-note';
+        note.textContent = '受付で診察券の確認を受けると、診療明細書をここで見られます。受付スタッフにお声がけください。';
+        list.appendChild(note);
+        return;
+      }
+      if (entry.statements.length === 0) {
+        const note = document.createElement('p');
+        note.className = 'doc-note';
+        note.textContent = '現在、表示できる明細書はありません。';
+        list.appendChild(note);
+        return;
+      }
+      entry.statements.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'doc-row';
+        const label = document.createElement('span');
+        label.textContent = s.date.replace(/-/g, '/') + ' の明細書';
+        const btn = document.createElement('button');
+        btn.className = 'btn primary';
+        btn.style.padding = '8px 18px';
+        btn.textContent = '開く';
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const data = await api('POST', '', null, '/api/statements', { cardNumber: entry.cardNumber, id: s.id });
+            const url = location.origin + data.url;
+            if (liff.isInClient()) liff.openWindow({ url, external: true });
+            else window.open(url, '_blank');
+          } catch (err) {
+            if (err.message !== 'relogin') alert('明細書を開けませんでした。通信環境をご確認ください');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+        row.append(label, btn);
+        list.appendChild(row);
+      });
+    }
+
+    async function loadStatements() {
+      try {
+        docCards = (await api('GET', '', null, '/api/statements')).cards;
+      } catch (err) {
+        if (err.message === 'relogin') throw err;
+        docCards = [];
+      }
+      renderStatements();
     }
 
     function openForm(canCancel) {
@@ -458,8 +533,13 @@
         cards = (await api('GET')).cards;
         renderCards();
 
-        // お支払い用カードは、まだ一般公開しない。URLに ?pay=1 が付いているときだけ表示する
-        if (new URLSearchParams(location.search).get('pay') === '1') {
+        // お支払い用カード・診療明細書は、まだ一般公開しない。URLに ?pay=1 が付いているときだけ表示する
+        const flags = new URLSearchParams(location.search);
+        if (flags.get('pay') === '1' || flags.get('doc') === '1') {
+          docMode = true;
+          try { await loadStatements(); } catch (e) { if (e.message === 'relogin') return; }
+        }
+        if (flags.get('pay') === '1') {
           try { await initPay(); } catch (e) { if (e.message === 'relogin') return; }
         }
       } catch (err) {

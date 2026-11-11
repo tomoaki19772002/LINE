@@ -3,6 +3,9 @@ const Stripe = require('stripe');
 const { getDb } = require('./_firebase');
 const { encrypt, decrypt } = require('./_cardstore');
 const { loadAllRecords, loadRecordById, saveRecordById, loadCardsOf } = require('./_paystore');
+const {
+  MAX_PDF_BYTES, getVerifiedOwner, setVerifiedOwner, saveStatement, listStatements, deleteStatement
+} = require('./_docstore');
 
 // 受付スタッフ用：カードの本人確認、診察券番号での請求、請求履歴。
 // お金が動くため、スタッフ用の合言葉（環境変数 STAFF_PIN）がないと一切使えない。
@@ -49,6 +52,33 @@ async function findVerified(cardNumber) {
     return { id, record, card };
   }
   return null;
+}
+
+// この診察券番号を自己登録している人（patientCards の持ち主）を全員探す
+async function findCardOwners(cardNumber) {
+  const snap = await getDb().ref('patientCards').once('value');
+  const all = snap.val() || {};
+  const owners = [];
+  for (const [ownerId, raw] of Object.entries(all)) {
+    try {
+      const card = decrypt(raw).find(c => c.cardNumber === cardNumber);
+      if (card) owners.push({ ownerId, name: card.name, birth: card.birth });
+    } catch (e) {
+      // 復号できない記録は読み飛ばす
+    }
+  }
+  return owners;
+}
+
+// 受付の画面に出す：登録している人・確認済みの人・アップロード済みの明細書
+async function docOverview(cardNumber) {
+  const [owners, verifiedOwnerId, statements] = await Promise.all([
+    findCardOwners(cardNumber), getVerifiedOwner(cardNumber), listStatements(cardNumber)
+  ]);
+  return {
+    owners: owners.map(o => Object.assign({}, o, { verified: o.ownerId === verifiedOwnerId })),
+    statements
+  };
 }
 
 async function writeLog(entry) {
@@ -219,6 +249,71 @@ module.exports = async (req, res) => {
       }).filter(Boolean);
       items.sort((a, b) => b.at - a.at);
       res.status(200).json({ items });
+      return;
+    }
+
+    // ── 診療明細書（患者さんがLINEの診察券から見る） ──────────────
+
+    // この診察券番号を自己登録している人の一覧と、受付で確認済みかどうか
+    if (body.action === 'doc-candidates') {
+      const cardNumber = parseCardNumber(body.cardNumber);
+      if (!cardNumber) {
+        res.status(400).json({ error: 'invalid input' });
+        return;
+      }
+      res.status(200).json(await docOverview(cardNumber));
+      return;
+    }
+
+    // 確認済みにする：診察券と本人を受付で確かめたあとに押す（番号ごとに持ち主は1人だけ）
+    if (body.action === 'doc-verify') {
+      const cardNumber = parseCardNumber(body.cardNumber);
+      const ownerId = String(body.ownerId || '');
+      if (!cardNumber || !/^[0-9a-f]{64}$/.test(ownerId)) {
+        res.status(400).json({ error: 'invalid input' });
+        return;
+      }
+      const owners = await findCardOwners(cardNumber);
+      if (!owners.some(o => o.ownerId === ownerId)) {
+        res.status(400).json({ error: 'card number not registered' });
+        return;
+      }
+      await setVerifiedOwner(cardNumber, ownerId);
+      res.status(200).json(await docOverview(cardNumber));
+      return;
+    }
+
+    if (body.action === 'doc-upload') {
+      const cardNumber = parseCardNumber(body.cardNumber);
+      const date = String(body.date || '');
+      const b64 = String(body.pdfBase64 || '');
+      if (!cardNumber || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !b64) {
+        res.status(400).json({ error: 'invalid input' });
+        return;
+      }
+      const pdf = Buffer.from(b64, 'base64');
+      if (pdf.length === 0 || pdf.length > MAX_PDF_BYTES) {
+        res.status(400).json({ error: 'file too large' });
+        return;
+      }
+      if (pdf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+        res.status(400).json({ error: 'not a pdf' });
+        return;
+      }
+      await saveStatement(cardNumber, date, pdf);
+      res.status(200).json(await docOverview(cardNumber));
+      return;
+    }
+
+    if (body.action === 'doc-delete') {
+      const cardNumber = parseCardNumber(body.cardNumber);
+      const id = String(body.id || '');
+      if (!cardNumber || !/^[0-9a-f]{16}$/.test(id)) {
+        res.status(400).json({ error: 'invalid input' });
+        return;
+      }
+      await deleteStatement(cardNumber, id);
+      res.status(200).json(await docOverview(cardNumber));
       return;
     }
 
