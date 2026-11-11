@@ -1,9 +1,9 @@
 const crypto = require('crypto');
-const { getDb, getBucket } = require('./_firebase');
+const { getDb } = require('./_firebase');
 const { encrypt, decrypt, deriveKey } = require('./_cardstore');
 
 // 診療明細書（PDF）の保管。
-// ・PDFは暗号化して Firebase Storage に置く（Realtime Database は公開読み取りのため、本文は置かない）
+// ・PDFは暗号化して Realtime Database に置く（公開読み取りでも、鍵がなければ読めない）
 // ・見られるのは「受付で本人確認済みの診察券」を持つ、その本人（LINEアカウント）だけ
 // ・診察券番号は、保存先の名前にそのまま使わず HMAC で伏せる
 
@@ -25,15 +25,12 @@ async function setVerifiedOwner(cardNumber, ownerId) {
 }
 
 // ── 明細書 ──
-function objectName(nKey, id) {
-  return `statements/${nKey}/${id}.bin`;
-}
-
+// PDF本体は statementBlobs に、AES-256-GCMで暗号化して置く（一覧用の情報は statements に別に置く）。
+// 暗号鍵はサーバーだけが持つため、データベースが公開読み取りでも、中身は読めない。
 async function saveStatement(cardNumber, date, pdfBuffer) {
   const nKey = numberKey(cardNumber);
   const id = crypto.randomBytes(8).toString('hex');
-  const blob = JSON.stringify(encrypt({ pdf: pdfBuffer.toString('base64') }));
-  await getBucket().file(objectName(nKey, id)).save(blob, { contentType: 'application/octet-stream', resumable: false });
+  await getDb().ref(`statementBlobs/${nKey}/${id}`).set(encrypt({ pdf: pdfBuffer.toString('base64') }));
   await getDb().ref(`statements/${nKey}/${id}`).set(encrypt({ date, size: pdfBuffer.length, at: Date.now() }));
   return id;
 }
@@ -56,13 +53,14 @@ async function listStatements(cardNumber) {
 
 async function deleteStatement(cardNumber, id) {
   const nKey = numberKey(cardNumber);
-  await getBucket().file(objectName(nKey, id)).delete({ ignoreNotFound: true });
+  await getDb().ref(`statementBlobs/${nKey}/${id}`).remove();
   await getDb().ref(`statements/${nKey}/${id}`).remove();
 }
 
 async function readStatementPdf(nKey, id) {
-  const [buf] = await getBucket().file(objectName(nKey, id)).download();
-  return Buffer.from(decrypt(JSON.parse(buf.toString('utf8'))).pdf, 'base64');
+  const raw = (await getDb().ref(`statementBlobs/${nKey}/${id}`).once('value')).val();
+  if (!raw) throw new Error('statement not found');
+  return Buffer.from(decrypt(raw).pdf, 'base64');
 }
 
 // ── 閲覧用の短時間URL（LINEの中でPDFを開くため、ログイン情報をヘッダーで渡せない代わりに使う）──
