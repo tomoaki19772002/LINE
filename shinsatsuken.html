@@ -341,6 +341,11 @@
         const small = document.createElement('small');
         small.textContent = exp + '　登録日 ' + new Date(card.consentAt).toLocaleDateString('ja-JP');
         box.appendChild(small);
+        const status = document.createElement('small');
+        status.textContent = card.verified
+          ? '受付での確認：済み'
+          : '受付での確認：未（初回は、受付で診察券をご提示のうえ、確認をお受けください）';
+        box.appendChild(status);
       } else {
         box.textContent = 'カードは未登録です';
       }

@@ -1,39 +1,10 @@
-const crypto = require('crypto');
 const Stripe = require('stripe');
-const { getDb } = require('./_firebase');
 const { verifyIdToken } = require('./_lineauth');
-const { encrypt, decrypt, deriveKey } = require('./_cardstore');
+const { loadRecord, saveRecord, publicView } = require('./_paystore');
 
 // 支払い用クレジットカードの登録（Stripe SetupIntent）。
 // カード番号は Stripe の埋め込みフォームから Stripe へ直接送られ、当院のサーバーには届かない。
-// 保存するのは Stripe の顧客ID・支払い方法ID・カードの下4桁など。Firebase は公開読み取りのため暗号化して保存する。
-
-function recordRef(sub) {
-  const id = crypto.createHmac('sha256', deriveKey('stripe-id')).update(sub).digest('hex');
-  return getDb().ref(`stripeCustomers/${id}`);
-}
-
-async function loadRecord(sub) {
-  const snap = await recordRef(sub).once('value');
-  const raw = snap.val();
-  return raw ? decrypt(raw) : null;
-}
-
-async function saveRecord(sub, record) {
-  await recordRef(sub).set(encrypt(record));
-}
-
-// 画面に返してよい項目だけ
-function publicView(record) {
-  if (!record || !record.paymentMethodId) return null;
-  return {
-    brand: record.brand,
-    last4: record.last4,
-    expMonth: record.expMonth,
-    expYear: record.expYear,
-    consentAt: record.consentAt
-  };
-}
+// 保存するのは Stripe の顧客ID・支払い方法ID・カードの下4桁など（暗号化して保存）。
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -123,16 +94,12 @@ module.exports = async (req, res) => {
       return;
     }
 
-    // カードの削除
+    // カードの削除（受付の確認結果も取り消す）
     if (req.method === 'DELETE') {
       if (record && record.paymentMethodId) {
         await stripe.paymentMethods.detach(record.paymentMethodId).catch(() => {});
-        delete record.paymentMethodId;
-        delete record.brand;
-        delete record.last4;
-        delete record.expMonth;
-        delete record.expYear;
-        delete record.consentAt;
+        ['paymentMethodId', 'brand', 'last4', 'expMonth', 'expYear', 'consentAt',
+          'verifiedCardNumber', 'verifiedAt'].forEach(k => { delete record[k]; });
         await saveRecord(sub, record);
       }
       res.status(200).json({ card: null });

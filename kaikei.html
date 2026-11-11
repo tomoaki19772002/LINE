@@ -3,537 +3,367 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>お会計案内システム</title>
-
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <meta name="robots" content="noindex">
+  <title>LINE会計（カード請求） | 川越あさひ眼科</title>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
-      background: #f0f4f8;
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+      background: linear-gradient(135deg, #e8f4fd 0%, #d0e8f8 100%);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
-      padding: 20px;
+      padding: 32px 20px 56px;
+      gap: 24px;
+      color: #263238;
     }
 
-    h1 {
-      font-size: 1.3rem;
-      color: #7a3c00;
-      letter-spacing: 0.05em;
-      margin-top: 4px;
-    }
+    h1 { font-size: 1.4rem; color: #1565c0; letter-spacing: 0.08em; }
+    .sub-lead { color: #4a6b8a; font-size: 0.9rem; text-align: center; max-width: 520px; line-height: 1.6; }
 
-    /* ── 表示パネル ── */
-    .display-panel {
-      background: #3a1a00;
+    .panel {
+      background: #fff;
       border-radius: 20px;
-      padding: 36px 80px;
-      text-align: center;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-      min-width: 560px;
-    }
-
-    .display-panel .label {
-      color: #e8b07a;
-      font-size: 1.4rem;
-      margin-bottom: 4px;
-      letter-spacing: 0.15em;
-    }
-
-    .display-panel .current-number {
-      color: #fff;
-      font-size: 12rem;
-      font-weight: bold;
-      line-height: 1;
-      letter-spacing: 0.05em;
-      min-height: 1.1em;
-    }
-
-    .display-panel .current-number.empty {
-      color: #6a3a1a;
-      font-size: 2.5rem;
-      line-height: 4;
-    }
-
-    /* ── 待ち番号エリア ── */
-    .waiting-panel {
-      background: #fff;
-      border-radius: 16px;
-      padding: 18px 24px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-      min-width: 560px;
-    }
-
-    .waiting-panel h2 {
-      font-size: 1rem;
-      color: #7a3c00;
-      margin-bottom: 12px;
-      letter-spacing: 0.05em;
-      border-bottom: 2px solid #f0d8c0;
-      padding-bottom: 8px;
-    }
-
-    .waiting-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      min-height: 48px;
-    }
-
-    .waiting-list .empty-msg {
-      color: #bbb;
-      font-size: 0.95rem;
-      align-self: center;
-    }
-
-    .waiting-tag {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: #fff3e0;
-      border: 2px solid #e8a040;
-      border-radius: 32px;
-      padding: 10px 22px;
-      font-size: 2rem;
-      font-weight: bold;
-      color: #7a3c00;
-    }
-
-    .waiting-tag .done-btn {
-      background: #e8a040;
-      color: #fff;
-      border: none;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      font-size: 1.1rem;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: background 0.15s;
-    }
-    .waiting-tag .done-btn:hover { background: #c06010; }
-
-    /* ── 操作パネル ── */
-    .control-panel {
-      background: #fff;
-      border-radius: 12px;
-      padding: 16px 24px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 20px rgba(0,60,140,0.12);
+      padding: 24px 28px;
+      width: 100%;
+      max-width: 560px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      min-width: 420px;
+      gap: 14px;
     }
+    .panel h2 { font-size: 1.1rem; color: #1565c0; letter-spacing: 0.05em; }
 
-    .form-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input[type=text], input[type=password], input[type=number] {
+      font-size: 1.2rem; padding: 10px 12px; border: 1.5px solid #b0bec5;
+      border-radius: 10px; width: 100%; max-width: 220px; background: #fff;
     }
+    input:focus { outline: none; border-color: #1565c0; }
+    label.field { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; font-weight: bold; color: #455a64; }
 
-    .form-row label {
-      font-size: 0.9rem;
-      color: #444;
-      white-space: nowrap;
-      width: 80px;
+    .btn {
+      border: none; border-radius: 24px; padding: 10px 22px;
+      font-size: 1rem; font-weight: bold; cursor: pointer; background: #1565c0; color: #fff;
     }
+    .btn.green { background: linear-gradient(135deg, #06c755, #05a648); }
+    .btn.ghost { background: #fff; color: #607d8b; border: 1.5px solid #b0bec5; }
+    .btn.small { padding: 6px 14px; font-size: 0.85rem; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
 
-    .number-input-wrap {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+    .msg { min-height: 1.4em; font-size: 0.95rem; font-weight: bold; }
+    .msg.ok { color: #06a648; }
+    .msg.warn { color: #e65100; }
+    .msg.err { color: #c62828; }
 
-    .num-btn {
-      width: 44px; height: 44px;
-      font-size: 1.4rem; font-weight: bold;
-      border: 2px solid #e8a040;
-      border-radius: 8px;
-      background: #fff8f0;
-      color: #7a3c00;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s;
-      flex-shrink: 0;
-      user-select: none;
-    }
-    .num-btn:hover  { background: #ffe0b0; }
-    .num-btn:active { background: #ffc880; }
+    .target { background: #e3f2fd; border-radius: 12px; padding: 12px 16px; line-height: 1.6; }
+    .target b { font-size: 1.15rem; }
 
-    input[type="number"] {
-      flex: 1;
-      padding: 8px 4px;
-      font-size: 1.1rem;
-      border: 2px solid #e8a040;
-      border-radius: 6px;
-      text-align: center;
-      outline: none;
-      transition: border-color 0.2s;
-      -moz-appearance: textfield;
-    }
-    input[type="number"]::-webkit-inner-spin-button,
-    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
-    input[type="number"]:focus { border-color: #7a3c00; }
+    .pending { border: 1.5px solid #cfd8dc; border-radius: 14px; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .pending .head { font-weight: bold; color: #37474f; }
+    .pending .card-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.95rem; }
+    .hint { font-size: 0.8rem; color: #78909c; line-height: 1.6; }
+    .empty { color: #b0bec5; font-size: 0.9rem; }
 
-    .call-btn {
-      padding: 12px;
-      font-size: 1.05rem;
-      font-weight: bold;
-      background: #c06010;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      letter-spacing: 0.1em;
-      transition: background 0.2s, transform 0.1s;
-    }
-    .call-btn:hover  { background: #a04800; }
-    .call-btn:active { transform: scale(0.98); }
-    .call-btn:disabled { background: #aaa; cursor: not-allowed; }
+    .log-row { font-size: 0.9rem; display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid #eceff1; }
+    .log-row .ng { color: #c62828; font-weight: bold; }
+    .log-row .good { color: #06a648; font-weight: bold; }
 
-    .info-btn {
-      padding: 11px;
-      font-size: 0.95rem;
-      font-weight: bold;
-      background: #5a7a9a;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      letter-spacing: 0.08em;
-      transition: background 0.2s;
-    }
-    .info-btn:hover { background: #4a6a8a; }
-    .info-btn:disabled { background: #aaa; cursor: not-allowed; }
-
-    .status {
-      text-align: center;
-      font-size: 0.82rem;
-      color: #666;
-      min-height: 1.2em;
-    }
-    .status.speaking { color: #c06010; font-weight: bold; }
-    .status.error    { color: #c0392b; }
-
-    /* ── 同期バッジ ── */
-    .sync-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.78rem;
-      padding: 4px 10px;
-      border-radius: 12px;
-      background: #e8f4ea;
-      color: #2c8a5f;
-      margin-top: 10px;
-    }
-    .sync-badge.disconnected { background: #fff0e0; color: #a06000; }
-    .sync-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: #2c8a5f;
-      animation: pulse 1.5s infinite;
-    }
-    .sync-badge.disconnected .sync-dot { background: #a06000; animation: none; }
-    @keyframes pulse {
-      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
-    }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
+  <h1>LINE会計（カード請求）</h1>
+  <p class="sub-lead">LINEで登録された診察券・クレジットカードに、診療費を請求します。請求の前に、必ず診察券と本人を確認してください。</p>
 
-  <h1>お会計案内システム</h1>
-
-  <!-- 表示パネル -->
-  <div class="display-panel">
-    <div class="label">現在お呼びしている番号</div>
-    <div class="current-number empty" id="displayNumber">－</div>
-    <div id="syncBadge" class="sync-badge disconnected">
-      <div class="sync-dot"></div>
-      <span id="syncText">接続中...</span>
+  <!-- 合言葉 -->
+  <div class="panel" id="loginPanel">
+    <h2>スタッフ用の合言葉</h2>
+    <div class="row">
+      <input type="password" id="pinInput" autocomplete="off" placeholder="合言葉">
+      <button class="btn" id="pinBtn">開く</button>
     </div>
+    <div class="msg" id="pinMsg"></div>
   </div>
 
-  <!-- 待ち番号 -->
-  <div class="waiting-panel">
-    <h2>お呼びしたが、まだお会計が終わっていない番号</h2>
-    <div class="waiting-list" id="waitingList">
-      <span class="empty-msg">なし</span>
-    </div>
-  </div>
+  <div id="mainArea" hidden style="display:contents">
+    <!-- 請求 -->
+    <div class="panel">
+      <h2>請求する</h2>
+      <div class="row">
+        <label class="field">診察券番号
+          <input type="text" id="cardNumberInput" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="例：12345">
+        </label>
+        <button class="btn" id="lookupBtn" style="align-self:flex-end">検索</button>
+      </div>
+      <div class="msg" id="lookupMsg"></div>
 
-  <!-- 操作パネル -->
-  <div class="control-panel">
-    <div class="form-row">
-      <label>番号</label>
-      <div class="number-input-wrap">
-        <button class="num-btn" onclick="stepNumber(-1)">－</button>
-        <input type="number" id="patientNumber" min="1" max="100" placeholder="1〜100" />
-        <button class="num-btn" onclick="stepNumber(1)">＋</button>
+      <div id="chargeArea" hidden>
+        <div class="target" id="targetBox"></div>
+        <div class="row" style="margin-top:12px">
+          <label class="field">請求金額（円）
+            <input type="number" id="amountInput" inputmode="numeric" min="1" max="200000" placeholder="例：3500">
+          </label>
+          <button class="btn green" id="chargeBtn" style="align-self:flex-end">請求する</button>
+        </div>
+        <div class="msg" id="chargeMsg"></div>
       </div>
     </div>
 
-    <button class="call-btn" id="callBtn" onclick="callKaikei()">
-      📢 お会計に呼ぶ
-    </button>
+    <!-- 確認待ち -->
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>確認待ちのカード登録</h2>
+        <button class="btn ghost small" id="refreshPendingBtn">更新</button>
+      </div>
+      <p class="hint">患者さんが自分で登録した内容です。診察券と本人（保険証など）で名前・生年月日を確かめてから「確認済みにする」を押してください。確認済みの診察券番号にだけ請求できます。</p>
+      <div id="pendingList"><span class="empty">読み込み中...</span></div>
+    </div>
 
-    <button class="info-btn" id="infoBtn" onclick="announceInfo()">
-      📣 表示番号の方はお会計ができます
-    </button>
-
-    <div class="status" id="status">番号を入力して「お会計に呼ぶ」を押してください</div>
+    <!-- 履歴 -->
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2>直近の請求</h2>
+        <button class="btn ghost small" id="refreshLogBtn">更新</button>
+      </div>
+      <div id="logList"><span class="empty">読み込み中...</span></div>
+    </div>
   </div>
 
-<script>
-  // ── Firebase ──────────────────────────────────────────────────
-  const firebaseConfig = {
-    apiKey:            "AIzaSyAM1kw9lv5z9UO1vi5R5ecT7hcIMQQt_MM",
-    authDomain:        "kawagoeasahi-72e5d.firebaseapp.com",
-    databaseURL:       "https://kawagoeasahi-72e5d-default-rtdb.firebaseio.com",
-    projectId:         "kawagoeasahi-72e5d",
-    storageBucket:     "kawagoeasahi-72e5d.firebasestorage.app",
-    messagingSenderId: "351069837644",
-    appId:             "1:351069837644:web:da3a3c8e877aee299017e9"
-  };
+  <script>
+    const el = id => document.getElementById(id);
+    let pin = '';
+    try { pin = sessionStorage.getItem('staffPin') || ''; } catch (e) {}
 
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-  const kaikeiRef = db.ref('kaikei');
-
-  // ── ローカル状態 ──────────────────────────────────────────────
-  let prevTimestamp = null;
-
-  // ── ±ボタン ───────────────────────────────────────────────────
-  function stepNumber(delta) {
-    const input = document.getElementById('patientNumber');
-    const val = parseInt(input.value, 10) || 0;
-    input.value = Math.min(100, Math.max(1, val + delta));
-  }
-
-  // ── お会計呼び出し ────────────────────────────────────────────
-  function callKaikei() {
-    const num = parseInt(document.getElementById('patientNumber').value, 10);
-    if (!num || num < 1 || num > 100) {
-      setStatus('番号を1〜100で入力してください', 'error');
-      return;
-    }
-    kaikeiRef.transaction(data => {
-      const d = data || { current: null, waiting: [], timestamp: 0, infoTimestamp: 0 };
-      const waiting = Array.isArray(d.waiting) ? d.waiting.slice() : [];
-      // 現在呼んでいる番号を待ちリストへ移動（既存でなければ）
-      if (d.current && !waiting.includes(d.current)) {
-        waiting.push(d.current);
-      }
-      d.current = num;
-      d.waiting = waiting.filter(n => n !== num); // 同じ番号が待ちにあれば除く
-      d.timestamp = Date.now();
-      return d;
-    });
-  }
-
-  // ── お会計完了（待ちリストから削除）─────────────────────────
-  function completeKaikei(num) {
-    kaikeiRef.transaction(data => {
-      const d = data || { current: null, waiting: [], timestamp: 0, infoTimestamp: 0 };
-      d.waiting = (Array.isArray(d.waiting) ? d.waiting : []).filter(n => n !== num);
-      if (d.current === num) d.current = null;
-      // timestamp は変えない → リスナーが音声を再生しない
-      return d;
-    });
-  }
-
-  // ── 案内アナウンス ────────────────────────────────────────────
-  function announceInfo() {
-    kaikeiRef.transaction(data => {
-      const d = data || { current: null, waiting: [], timestamp: 0, infoTimestamp: 0 };
-      d.infoTimestamp = Date.now();
-      return d;
-    });
-  }
-
-  // ── Firebase リスナー ─────────────────────────────────────────
-  kaikeiRef.on('value', snapshot => {
-    const data = snapshot.val();
-    if (!data) return;
-
-    const isNew = prevTimestamp !== null && data.timestamp !== prevTimestamp;
-    const isNewInfo = prevTimestamp !== null && data.infoTimestamp && data.infoTimestamp !== (window._prevInfoTs || 0);
-
-    // 初回または変化で表示更新
-    updateDisplay(data.current);
-    updateWaitingList(Array.isArray(data.waiting) ? data.waiting : []);
-
-    if (prevTimestamp === null) {
-      prevTimestamp = data.timestamp;
-      window._prevInfoTs = data.infoTimestamp || 0;
-      return;
-    }
-
-    if (isNew) {
-      prevTimestamp = data.timestamp;
-      if (data.current) {
-        speakKaikei(data.current);
-      }
-    }
-
-    if (isNewInfo) {
-      window._prevInfoTs = data.infoTimestamp;
-      speakInfoAnnounce(data.current, Array.isArray(data.waiting) ? data.waiting : []);
-    }
-  });
-
-  // ── 接続状態 ──────────────────────────────────────────────────
-  db.ref('.info/connected').on('value', snap => {
-    const badge = document.getElementById('syncBadge');
-    const text  = document.getElementById('syncText');
-    if (snap.val()) {
-      badge.classList.remove('disconnected');
-      text.textContent = '全端末同期中';
-    } else {
-      badge.classList.add('disconnected');
-      text.textContent = 'オフライン';
-    }
-  });
-
-  // ── 表示更新 ──────────────────────────────────────────────────
-  function updateDisplay(current) {
-    const el = document.getElementById('displayNumber');
-    if (current) {
-      el.classList.remove('empty');
-      el.textContent = current;
-    } else {
-      el.classList.add('empty');
-      el.textContent = '－';
-    }
-  }
-
-  function updateWaitingList(waiting) {
-    const list = document.getElementById('waitingList');
-    list.innerHTML = '';
-    if (waiting.length === 0) {
-      list.innerHTML = '<span class="empty-msg">なし</span>';
-      return;
-    }
-    waiting.slice().sort((a, b) => a - b).forEach(num => {
-      const tag = document.createElement('div');
-      tag.className = 'waiting-tag';
-      tag.innerHTML = `
-        <span>${num}番</span>
-        <button class="done-btn" title="お会計完了" onclick="completeKaikei(${num})">✓</button>
-      `;
-      list.appendChild(tag);
-    });
-  }
-
-  // ── 音声読み上げ ──────────────────────────────────────────────
-  function getJaVoice() {
-    const voices = window.speechSynthesis.getVoices();
-    return voices.find(v => v.name.includes('Nanami'))
-        || voices.find(v => v.name.includes('Haruka'))
-        || voices.find(v => v.name.includes('Kyoko'))
-        || voices.find(v => v.lang.startsWith('ja'))
-        || null;
-  }
-
-  function playChime() {
-    return new Promise(resolve => {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // お会計専用チャイム（他アプリのG5-C6-B5-E6と異なる音程：F5-A5-C6-F6 下降形）
-      const notes = [
-        { freq: 698, dur: 0.4 },
-        { freq: 880, dur: 0.4 },
-        { freq: 523, dur: 0.4 },
-        { freq: 698, dur: 0.6 },
-      ];
-      let time = ctx.currentTime;
-      notes.forEach(({ freq, dur }) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, time);
-        gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.35, time + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-        osc.start(time);
-        osc.stop(time + dur);
-        time += 0.22;
+    async function api(body) {
+      const res = await fetch('/api/staff-pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-staff-pin': pin },
+        body: JSON.stringify(body)
       });
-      setTimeout(resolve, notes.length * 220 + 250);
-    });
-  }
-
-  async function speak(text) {
-    await new Promise(resolve => {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ja-JP'; u.rate = 0.82; u.pitch = 1.0; u.volume = 1.0;
-      const ja = getJaVoice();
-      if (ja) u.voice = ja;
-      u.onend = resolve; u.onerror = resolve;
-      window.speechSynthesis.speak(u);
-    });
-  }
-
-  async function speakKaikei(num) {
-    const text = `${num}番のかた、お会計のため受付までお越しください。`;
-    setStatus(`読み上げ中：「${text}」`, 'speaking');
-    document.getElementById('callBtn').disabled = true;
-    await playChime();
-    await speak(text);
-    setStatus('案内完了');
-    document.getElementById('callBtn').disabled = false;
-  }
-
-  async function speakInfoAnnounce(current, waiting) {
-    const all = [...(waiting || [])];
-    if (current && !all.includes(current)) all.unshift(current);
-    all.sort((a, b) => a - b);
-
-    let text;
-    if (all.length === 0) {
-      text = '表示されている番号のかたは、お会計ができます。受付までお越しください。';
-    } else if (all.length === 1) {
-      text = `${all[0]}番のかたは、お会計ができます。受付までお越しください。`;
-    } else {
-      const nums = all.join('番、') + '番';
-      text = `${nums}のかたは、お会計ができます。受付までお越しください。`;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.error || 'error'), { status: res.status });
+      return data;
     }
 
-    setStatus(`読み上げ中：「${text}」`, 'speaking');
-    document.getElementById('infoBtn').disabled = true;
-    await playChime();
-    await speak(text);
-    setStatus('案内完了');
-    document.getElementById('infoBtn').disabled = false;
-  }
+    function setMsg(id, text, kind) {
+      const m = el(id);
+      m.textContent = text;
+      m.className = 'msg' + (kind ? ' ' + kind : '');
+    }
 
-  // ── ステータス ────────────────────────────────────────────────
-  function setStatus(msg, type = '') {
-    const el = document.getElementById('status');
-    el.textContent = msg;
-    el.className = 'status ' + type;
-  }
+    function newKey() {
+      return (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+    }
 
-  // ── Enterキー ─────────────────────────────────────────────────
-  document.getElementById('patientNumber').addEventListener('keydown', e => {
-    if (e.key === 'Enter') callKaikei();
-  });
+    // ── 合言葉 ──
+    async function tryLogin() {
+      try {
+        await api({ action: 'ping' });
+        try { sessionStorage.setItem('staffPin', pin); } catch (e) {}
+        el('loginPanel').hidden = true;
+        el('mainArea').hidden = false;
+        el('mainArea').style.display = 'contents';
+        loadPending();
+        loadLog();
+        return true;
+      } catch (err) {
+        pin = '';
+        try { sessionStorage.removeItem('staffPin'); } catch (e) {}
+        el('loginPanel').hidden = false;
+        el('mainArea').hidden = true;
+        if (err.status === 429) setMsg('pinMsg', '失敗が続いたため、しばらく使えません。時間をおいてください', 'err');
+        else if (err.status === 503) setMsg('pinMsg', 'まだ設定が済んでいません（STAFF_PIN）', 'err');
+        else if (err.status === 401) setMsg('pinMsg', '合言葉が違います', 'err');
+        return false;
+      }
+    }
 
-  // 音声リスト取得（Chrome対策）
-  window.speechSynthesis.onvoiceschanged = () => {};
-  window.speechSynthesis.getVoices();
-</script>
+    el('pinBtn').addEventListener('click', () => {
+      pin = el('pinInput').value;
+      el('pinInput').value = '';
+      setMsg('pinMsg', '', '');
+      tryLogin();
+    });
+    el('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') el('pinBtn').click(); });
+
+    // ── 請求 ──
+    let target = null;     // 検索で見つかった請求先
+    let idempotencyKey = newKey();
+
+    function resetCharge() {
+      target = null;
+      el('chargeArea').hidden = true;
+      setMsg('chargeMsg', '', '');
+    }
+
+    el('cardNumberInput').addEventListener('input', () => { resetCharge(); setMsg('lookupMsg', '', ''); });
+    el('amountInput').addEventListener('input', () => { idempotencyKey = newKey(); setMsg('chargeMsg', '', ''); });
+    el('cardNumberInput').addEventListener('keydown', e => { if (e.key === 'Enter') el('lookupBtn').click(); });
+
+    el('lookupBtn').addEventListener('click', async () => {
+      const cardNumber = el('cardNumberInput').value.trim();
+      if (!cardNumber) return;
+      resetCharge();
+      el('lookupBtn').disabled = true;
+      setMsg('lookupMsg', '検索中...', '');
+      try {
+        const data = await api({ action: 'lookup', cardNumber });
+        if (!data.found) {
+          setMsg('lookupMsg', 'この診察券番号で、確認済みのカードはありません（下の「確認待ち」をご確認ください）', 'warn');
+          return;
+        }
+        target = { cardNumber, name: data.name };
+        el('targetBox').innerHTML = '';
+        const b = document.createElement('b');
+        b.textContent = data.name + ' 様';
+        el('targetBox').append(b, document.createElement('br'),
+          '診察券 ' + cardNumber + '　／　' + data.brand.toUpperCase() + ' •••• ' + data.last4);
+        el('chargeArea').hidden = false;
+        idempotencyKey = newKey();
+        setMsg('lookupMsg', '', '');
+        el('amountInput').focus();
+      } catch (err) {
+        if (err.status === 401) { tryLogin(); return; }
+        setMsg('lookupMsg', '検索に失敗しました。通信環境を確認してください', 'err');
+      } finally {
+        el('lookupBtn').disabled = false;
+      }
+    });
+
+    el('chargeBtn').addEventListener('click', async () => {
+      if (!target) return;
+      const amount = Number(el('amountInput').value);
+      if (!Number.isInteger(amount) || amount < 1 || amount > 200000) {
+        setMsg('chargeMsg', '金額は1〜200,000円の整数で入力してください', 'warn');
+        return;
+      }
+      if (!confirm(target.name + ' 様に ' + amount.toLocaleString('ja-JP') + ' 円を請求します。\n診察券と本人を確認済みですか？')) return;
+
+      el('chargeBtn').disabled = true;
+      setMsg('chargeMsg', '請求中...', '');
+      try {
+        const data = await api({ action: 'charge', cardNumber: target.cardNumber, amount, idempotencyKey });
+        if (data.ok) {
+          setMsg('chargeMsg', amount.toLocaleString('ja-JP') + ' 円を請求しました（決済完了）', 'ok');
+          el('amountInput').value = '';
+          idempotencyKey = newKey();
+          loadLog();
+        } else if (data.reason === 'authentication_required') {
+          setMsg('chargeMsg', 'カード会社の認証が必要なため請求できませんでした。窓口でのお支払いに切り替えてください', 'err');
+          loadLog();
+        } else if (data.reason === 'not_verified') {
+          setMsg('chargeMsg', '確認済みのカードがありません', 'err');
+        } else {
+          setMsg('chargeMsg', '請求できませんでした（' + data.reason + '）。窓口でのお支払いに切り替えてください', 'err');
+          loadLog();
+        }
+      } catch (err) {
+        if (err.status === 401) { tryLogin(); return; }
+        setMsg('chargeMsg', '通信に失敗しました。請求されたか不明です。「直近の請求」を確認してから、やり直してください', 'err');
+        loadLog();
+      } finally {
+        el('chargeBtn').disabled = false;
+      }
+    });
+
+    // ── 確認待ち ──
+    async function loadPending() {
+      const box = el('pendingList');
+      try {
+        const data = await api({ action: 'pending' });
+        box.innerHTML = '';
+        if (data.items.length === 0) {
+          box.innerHTML = '<span class="empty">確認待ちはありません</span>';
+          return;
+        }
+        box.style.display = 'flex';
+        box.style.flexDirection = 'column';
+        box.style.gap = '10px';
+        data.items.forEach(item => {
+          const wrap = document.createElement('div');
+          wrap.className = 'pending';
+          const head = document.createElement('div');
+          head.className = 'head';
+          head.textContent = item.brand.toUpperCase() + ' •••• ' + item.last4 + '（' +
+            new Date(item.registeredAt).toLocaleString('ja-JP') + ' 登録）';
+          wrap.appendChild(head);
+
+          if (item.cards.length === 0) {
+            const none = document.createElement('div');
+            none.className = 'hint';
+            none.textContent = '診察券が登録されていません';
+            wrap.appendChild(none);
+          }
+          item.cards.forEach(c => {
+            const row = document.createElement('div');
+            row.className = 'card-row';
+            const text = document.createElement('span');
+            text.textContent = '診察券 ' + c.cardNumber + '　' + c.name + ' 様　' + c.birth.replace(/-/g, '/') + '生' +
+              (c.taken ? '　⚠この番号は別のカードで確認済み' : '');
+            const btn = document.createElement('button');
+            btn.className = 'btn small';
+            btn.textContent = '確認済みにする';
+            btn.addEventListener('click', async () => {
+              const warn = c.taken ? '\n※この番号で確認済みの別のカードは、取り消されます。' : '';
+              if (!confirm('診察券 ' + c.cardNumber + '（' + c.name + ' 様）を、診察券と本人で確認しましたか？' + warn)) return;
+              btn.disabled = true;
+              try {
+                await api({ action: 'verify', ref: item.ref, cardNumber: c.cardNumber });
+                loadPending();
+              } catch (err) {
+                btn.disabled = false;
+                alert('確認済みにできませんでした');
+              }
+            });
+            row.append(text, btn);
+            wrap.appendChild(row);
+          });
+          box.appendChild(wrap);
+        });
+      } catch (err) {
+        if (err.status === 401) { tryLogin(); return; }
+        box.innerHTML = '<span class="empty">読み込めませんでした</span>';
+      }
+    }
+    el('refreshPendingBtn').addEventListener('click', loadPending);
+
+    // ── 履歴 ──
+    async function loadLog() {
+      const box = el('logList');
+      try {
+        const data = await api({ action: 'recent' });
+        box.innerHTML = '';
+        if (data.items.length === 0) {
+          box.innerHTML = '<span class="empty">まだ請求はありません</span>';
+          return;
+        }
+        data.items.forEach(it => {
+          const row = document.createElement('div');
+          row.className = 'log-row';
+          const when = document.createElement('span');
+          when.textContent = new Date(it.at).toLocaleString('ja-JP');
+          const num = document.createElement('span');
+          num.textContent = '診察券 ' + it.cardNumber;
+          const amt = document.createElement('span');
+          amt.textContent = it.amount.toLocaleString('ja-JP') + ' 円';
+          const st = document.createElement('span');
+          st.className = it.ok ? 'good' : 'ng';
+          st.textContent = it.ok ? '決済完了' : '失敗（' + it.reason + '）';
+          row.append(when, num, amt, st);
+          box.appendChild(row);
+        });
+      } catch (err) {
+        if (err.status === 401) { tryLogin(); return; }
+        box.innerHTML = '<span class="empty">読み込めませんでした</span>';
+      }
+    }
+    el('refreshLogBtn').addEventListener('click', loadLog);
+
+    if (pin) tryLogin();
+  </script>
 </body>
 </html>

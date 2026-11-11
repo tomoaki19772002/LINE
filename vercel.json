@@ -6,6 +6,7 @@
     { "source": "/line-yobidashi", "destination": "/line-yobidashi.html" },
     { "source": "/scan", "destination": "/scan-list.html" },
     { "source": "/shinsatsuken", "destination": "/shinsatsuken.html" },
+    { "source": "/kaikei", "destination": "/kaikei.html" },
     { "source": "/", "destination": "/reception.html" }
   ]
 }
