@@ -3,6 +3,7 @@ const Stripe = require('stripe');
 const { getDb } = require('./_firebase');
 const { encrypt, decrypt } = require('./_cardstore');
 const { loadAllRecords, loadRecordById, saveRecordById, loadCardsOf } = require('./_paystore');
+const { upsertPayment } = require('./_payments');
 const {
   MAX_PDF_BYTES, KINDS, getVerifiedOwner, setVerifiedOwner, saveStatement, listStatements, deleteStatement
 } = require('./_docstore');
@@ -236,6 +237,13 @@ module.exports = async (req, res) => {
 
       const ok = intent.status === 'succeeded';
       await writeLog({ cardNumber, amount, ok, reason: ok ? null : intent.status, piId: intent.id });
+      if (ok) {
+        // 患者さんの支払い履歴用。あとから届く Webhook でも、同じ決済IDで上書き・追記される
+        await upsertPayment(cardNumber, intent.id, {
+          amount, status: 'succeeded', at: Date.now(),
+          brand: found.record.brand, last4: found.record.last4
+        });
+      }
       res.status(200).json({ ok, reason: ok ? null : intent.status });
       return;
     }

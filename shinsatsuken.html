@@ -133,6 +133,16 @@
         </p>
       </div>
 
+      <!-- お支払い履歴（URLに ?pay=1 または ?doc=1 が付いているときだけ表示） -->
+      <div class="form" id="historyBox" style="margin-top:16px" hidden>
+        <h2>お支払い履歴（カード）</h2>
+        <div id="historyList"></div>
+        <p class="privacy">
+          LINEに登録したカードでお支払いいただいた記録です。医療費の領収証・診療明細書の代わりにはなりません。
+          領収証は、受付でお渡しします。
+        </p>
+      </div>
+
       <div class="actions" style="margin-top:16px">
         <button class="btn ghost" id="addBtn">診察券を追加</button>
         <button class="btn danger" id="deleteBtn">この診察券を削除</button>
@@ -260,6 +270,7 @@
       }
       show('cardView');
       renderStatements();
+      renderPayHistory();
     }
 
     // ── 診療明細書 ──
@@ -323,6 +334,64 @@
         docCards = [];
       }
       renderStatements();
+
+      try {
+        payCards = (await api('GET', '', null, '/api/pay-history')).cards;
+      } catch (err) {
+        if (err.message === 'relogin') throw err;
+        payCards = [];
+      }
+      renderPayHistory();
+    }
+
+    // ── お支払い履歴 ──
+    let payCards = [];
+
+    function renderPayHistory() {
+      el('historyBox').hidden = !docMode;
+      if (!docMode || !cards[selected]) return;
+      const list = el('historyList');
+      list.innerHTML = '';
+      const entry = payCards.find(d => d.cardNumber === cards[selected].cardNumber);
+
+      const note = text => {
+        const p = document.createElement('p');
+        p.className = 'doc-note';
+        p.textContent = text;
+        list.appendChild(p);
+      };
+      if (!entry) { note('受付で診察券の確認を受けると、お支払い履歴をここで見られます。'); return; }
+      if (entry.payments.length === 0) { note('お支払い履歴はありません。'); return; }
+
+      entry.payments.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'doc-row';
+        row.style.alignItems = 'flex-start';
+        const left = document.createElement('div');
+        const d = new Date(p.at);
+        const when = d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' +
+          String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' +
+          String(d.getMinutes()).padStart(2, '0');
+        left.textContent = when;
+        const sub = document.createElement('small');
+        sub.style.display = 'block';
+        sub.style.color = '#90a4ae';
+        sub.textContent = (p.last4 ? 'カード •••• ' + p.last4 + '　' : '') + '受付番号 ' + p.receiptNo;
+        left.appendChild(sub);
+        const right = document.createElement('div');
+        right.style.fontWeight = 'bold';
+        right.style.textAlign = 'right';
+        right.textContent = p.amount.toLocaleString('ja-JP') + ' 円';
+        if (p.refunded > 0) {
+          const r = document.createElement('small');
+          r.style.display = 'block';
+          r.style.color = '#c62828';
+          r.textContent = '返金 ' + p.refunded.toLocaleString('ja-JP') + ' 円';
+          right.appendChild(r);
+        }
+        row.append(left, right);
+        list.appendChild(row);
+      });
     }
 
     function openForm(canCancel) {
