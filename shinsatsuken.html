@@ -92,6 +92,7 @@
     .pay-saved small { display: block; font-weight: normal; font-size: 0.75rem; color: #90a4ae; }
     .pay-consent { display: flex; gap: 8px; align-items: flex-start; font-size: 0.85rem; line-height: 1.6; color: #455a64; }
     .pay-consent input { margin-top: 4px; flex-shrink: 0; width: 18px; height: 18px; }
+    .pay-assure { background: #e8f5e9; border-radius: 12px; padding: 12px 14px; font-size: 0.82rem; line-height: 1.7; color: #37474f; display: flex; flex-direction: column; gap: 8px; }
     .doc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eceff1; font-size: 0.95rem; }
     .doc-note { font-size: 0.85rem; color: #607d8b; line-height: 1.7; }
 
@@ -138,8 +139,7 @@
         <h2>お支払い履歴（カード）</h2>
         <div id="historyList"></div>
         <p class="privacy">
-          LINEに登録したカードでお支払いいただいた記録です。医療費の領収証・診療明細書の代わりにはなりません。
-          領収証は、受付でお渡しします。
+          LINEに登録したカードでお支払いいただいた記録です。診療明細書の代わりにはなりません。診療明細書は当院からの送信後、このページ内で見ることができます。
         </p>
       </div>
 
@@ -152,6 +152,10 @@
     <!-- お支払い用カード（URLに ?pay=1 が付いているときだけ表示） -->
     <section class="form" id="payBox" hidden>
       <h2>お支払い用カード</h2>
+      <div class="pay-assure">
+        <p>当院のオンライン決済には、世界中の大手企業（Amazon、Googleなど）や医療機関でも採用されているグローバル決済システム「Stripe（ストライプ）」を使用しています。</p>
+        <p>お客様のクレジットカード情報は最高水準の国際セキュリティ基準（PCI DSS Level 1）に基づき厳重に暗号化され、当院にカード番号が保存・共有されることは一切ございません。どうぞ安心してご利用ください。</p>
+      </div>
       <div class="pay-saved" id="paySaved"></div>
 
       <div id="payFormArea" hidden>
@@ -172,7 +176,6 @@
         <button type="button" class="btn danger" id="payDeleteBtn" hidden>カードを削除</button>
       </div>
       <p class="privacy">
-        カード番号は決済会社（Stripe）へ直接送信され、当院ではカード番号を保存しません。
         診療費は、会計のたびに登録カードへ請求されます。
       </p>
     </section>
