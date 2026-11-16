@@ -72,6 +72,38 @@
     .log-row .ng { color: #c62828; font-weight: bold; }
     .log-row .good { color: #06a648; font-weight: bold; }
 
+    /* PDFまとめ読み取り */
+    .panel.wide { max-width: 980px; }
+    .drop {
+      border: 2px dashed #90a4ae; border-radius: 14px; padding: 22px 16px; text-align: center;
+      color: #546e7a; background: #f7fbfe; cursor: pointer; line-height: 1.7;
+    }
+    .drop.over { border-color: #1565c0; background: #e3f2fd; }
+    .brow {
+      display: grid; grid-template-columns: 340px 1fr; gap: 14px; padding: 12px;
+      border: 1.5px solid #cfd8dc; border-radius: 14px; align-items: start;
+    }
+    .brow.skip { opacity: 0.55; background: #fafafa; }
+    .brow.done { border-color: #81c784; background: #f1f8f1; }
+    .brow .thumb { width: 100%; border: 1px solid #cfd8dc; border-radius: 8px; background: #fff; min-height: 60px; }
+    .brow .fname { font-size: 0.75rem; color: #78909c; word-break: break-all; margin-top: 4px; }
+    .brow .fields { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .brow input[type=text], .brow input[type=number], .brow input[type=date], .brow select {
+      font-size: 1rem; padding: 6px 8px; border: 1.5px solid #b0bec5; border-radius: 8px; max-width: 150px; background: #fff;
+    }
+    .brow select { max-width: 190px; }
+    .brow .st { font-size: 0.88rem; line-height: 1.6; margin-top: 8px; }
+    .brow .st .good { color: #06a648; font-weight: bold; }
+    .brow .st .warnt { color: #e65100; font-weight: bold; }
+    .brow .st .ng { color: #c62828; font-weight: bold; }
+    .brow .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; font-size: 0.95rem; font-weight: bold; }
+    .brow .checks label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+    .brow .checks label.off { color: #b0bec5; cursor: default; }
+    .brow .checks input { width: 18px; height: 18px; }
+    .sumbar { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+      background: #e3f2fd; border-radius: 12px; padding: 12px 16px; font-weight: bold; }
+    @media (max-width: 720px) { .brow { grid-template-columns: 1fr; } }
+
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -113,6 +145,36 @@
       </div>
     </div>
 
+    <!-- PDFまとめ読み取り -->
+    <div class="panel wide">
+      <h2>診療費請求書兼領収書（PDF）をまとめて読み取る</h2>
+      <p class="hint">レセコンから出した、その日の領収書PDFを、ここへまとめて入れます。患者番号・発行日・請求金額を自動で読み取り、LINEで確認済みの方の分だけを、明細書としてアップロード（必要なら続けてカード請求）します。読み取りは、このパソコンの中だけで行います（PDFの中身を外部の読み取りサービスへ送ることはありません）。</p>
+      <div class="row">
+        <label class="field">種類
+          <select id="batchKind" style="font-size:1.1rem;padding:10px 12px;border:1.5px solid #b0bec5;border-radius:10px;background:#fff">
+            <option value="receipt">領収書・診療明細書</option>
+            <option value="insurance">保険診療分</option>
+            <option value="self">自費分</option>
+            <option value="other">その他</option>
+          </select>
+        </label>
+      </div>
+      <div class="drop" id="batchDrop">
+        ここに、PDFを（複数まとめて）ドラッグしてください<br>
+        <span class="hint">またはクリックして選ぶ（1ファイル3MBまで・1ページ目の内容を読み取ります）</span>
+        <input type="file" id="batchFile" accept="application/pdf" multiple hidden>
+      </div>
+      <div class="msg" id="batchMsg"></div>
+      <div id="batchList" style="display:flex;flex-direction:column;gap:10px"></div>
+      <div class="sumbar" id="batchSum" hidden>
+        <span id="batchSumText"></span>
+        <span class="row">
+          <button class="btn ghost small" id="batchClearBtn">一覧を消す</button>
+          <button class="btn green" id="batchRunBtn">選んだ内容を実行する</button>
+        </span>
+      </div>
+    </div>
+
     <!-- 診療明細書 -->
     <div class="panel">
       <h2>診療明細書（PDF）</h2>
@@ -134,6 +196,7 @@
           </label>
           <label class="field">種類
             <select id="docKindInput" style="font-size:1.1rem;padding:10px 12px;border:1.5px solid #b0bec5;border-radius:10px;background:#fff">
+              <option value="receipt">領収書・診療明細書</option>
               <option value="insurance">保険診療分</option>
               <option value="self">自費分</option>
               <option value="other">その他</option>
@@ -402,7 +465,9 @@
 
     // ── 診療明細書 ──
     let docCardNumber = '';
-    const KIND_NAMES = { insurance: '保険診療分', self: '自費分', other: 'その他' };
+    const KIND_NAMES = { receipt: '領収書・診療明細書', insurance: '保険診療分', self: '自費分', other: 'その他' };
+
+    function kindLabel(k) { return k === 'receipt' ? KIND_NAMES.receipt : (KIND_NAMES[k] || 'その他') + 'の明細書'; }
 
     function todayStr() {
       const d = new Date();
@@ -462,12 +527,12 @@
         row.className = 'log-row';
         row.style.alignItems = 'center';
         const label = document.createElement('span');
-        label.textContent = s.date.replace(/-/g, '/') + '　' + (KIND_NAMES[s.kind] || 'その他') + 'の明細書';
+        label.textContent = s.date.replace(/-/g, '/') + '　' + kindLabel(s.kind);
         const del = document.createElement('button');
         del.className = 'btn ghost small';
         del.textContent = '削除';
         del.addEventListener('click', async () => {
-          if (!confirm(s.date + '　' + (KIND_NAMES[s.kind] || 'その他') + 'の明細書を削除しますか？')) return;
+          if (!confirm(s.date + '　' + kindLabel(s.kind) + 'を削除しますか？')) return;
           try {
             renderDoc(await api({ action: 'doc-delete', cardNumber: docCardNumber, id: s.id }));
           } catch (err) {
@@ -527,6 +592,478 @@
       } finally {
         el('docUploadBtn').disabled = false;
       }
+    });
+
+    // ── PDFまとめ読み取り ──
+    // 読み取りはこのパソコンの中だけで行う（PDFをページ内で画像にして、文字を読む）。
+    // 読み取りの部品（pdf.js / Tesseract.js）は、使うときに初めて読み込む。
+    const LIBS = {
+      tesseract: { src: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js', sri: 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F' },
+      pdfjs: { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', sri: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e' }
+    };
+    const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const libPromises = {};
+    function loadLib(name) {
+      if (!libPromises[name]) {
+        libPromises[name] = new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = LIBS[name].src;
+          s.integrity = LIBS[name].sri;
+          s.crossOrigin = 'anonymous';
+          s.onload = resolve;
+          s.onerror = () => { delete libPromises[name]; reject(new Error('lib load failed')); };
+          document.head.appendChild(s);
+        });
+      }
+      return libPromises[name];
+    }
+
+    let ocrWorkers = null;
+    async function getOcr() {
+      if (!ocrWorkers) {
+        await loadLib('tesseract');
+        const eng = await Tesseract.createWorker('eng');
+        await eng.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '7' });
+        const jpn = await Tesseract.createWorker('jpn');
+        await jpn.setParameters({ tessedit_pageseg_mode: '7' });
+        ocrWorkers = { eng, jpn };
+      }
+      return ocrWorkers;
+    }
+
+    // 読み取る場所（ページ全体に対する割合）：[左, 上, 右, 下]
+    const REG = {
+      id:   [0.056, 0.105, 0.215, 0.142],  // 「患者番号 007201」の行
+      date: [0.815, 0.113, 0.950, 0.145],  // 「令和08年11月16日」（発行日）
+      amt:  [0.188, 0.187, 0.320, 0.218],  // 先頭の「¥ 1,090」
+      amt2: [0.098, 0.381, 0.143, 0.400],  // 「今回請求額」の欄の金額
+      thumb:[0.040, 0.085, 0.720, 0.245]   // 画面に出す見本（名前の確認用）
+    };
+
+    // 切り出して2倍に拡大し、赤の線（赤枠）は消える白黒画像にする
+    function cropForOcr(canvas, reg) {
+      const sx = Math.round(canvas.width * reg[0]), sy = Math.round(canvas.height * reg[1]);
+      const sw = Math.round(canvas.width * (reg[2] - reg[0])), sh = Math.round(canvas.height * (reg[3] - reg[1]));
+      const out = document.createElement('canvas');
+      out.width = sw * 2; out.height = sh * 2;
+      const ctx = out.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      const img = ctx.getImageData(0, 0, out.width, out.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) { d[i + 1] = d[i]; d[i + 2] = d[i]; } // 赤の成分だけを使う
+      // 罫線（長い横線・縦線）を消す。文字に重なると読み間違えるため
+      const w = out.width, h = out.height;
+      const dark = (x, y) => d[(y * w + x) * 4] < 140;
+      const whiten = (x, y) => { const i = (y * w + x) * 4; d[i] = d[i + 1] = d[i + 2] = 255; };
+      const rowHit = [], colHit = [];
+      for (let y = 0; y < h; y++) { let n = 0; for (let x = 0; x < w; x++) if (dark(x, y)) n++; rowHit[y] = n > w * 0.6; }
+      for (let x = 0; x < w; x++) { let n = 0; for (let y = 0; y < h; y++) if (dark(x, y)) n++; colHit[x] = n > h * 0.85; }
+      for (let y = 0; y < h; y++) if (rowHit[y]) for (let x = 0; x < w; x++) { whiten(x, y); if (y + 1 < h) whiten(x, y + 1); if (y > 0) whiten(x, y - 1); }
+      for (let x = 0; x < w; x++) if (colHit[x]) for (let y = 0; y < h; y++) { whiten(x, y); if (x + 1 < w) whiten(x + 1, y); if (x > 0) whiten(x - 1, y); }
+      ctx.putImageData(img, 0, 0);
+      return out;
+    }
+
+    function thumbOf(canvas) {
+      const sx = Math.round(canvas.width * REG.thumb[0]), sy = Math.round(canvas.height * REG.thumb[1]);
+      const sw = Math.round(canvas.width * (REG.thumb[2] - REG.thumb[0])), sh = Math.round(canvas.height * (REG.thumb[3] - REG.thumb[1]));
+      const out = document.createElement('canvas');
+      out.width = 600; out.height = Math.round(600 * sh / sw);
+      out.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      return out.toDataURL('image/jpeg', 0.7);
+    }
+
+    function parseId(text) {
+      const t = String(text || '').replace(/\s+/g, '');
+      let m = t.match(/号\D{0,2}(\d{3,12})/);
+      if (!m) {
+        const runs = t.match(/\d{3,12}/g);
+        if (runs) m = [null, runs.sort((a, b) => b.length - a.length)[0]];
+      }
+      return m ? m[1].replace(/^0+(?=\d)/, '') : '';
+    }
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function parseDate(text) {
+      const t = String(text || '').replace(/\s+/g, '');
+      let y, mo, d, m;
+      if ((m = t.match(/(令和|平成|R|H)?(\d{1,2})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})(?!\d)/)) && !/(20\d\d)/.test(t)) {
+        const n = Number(m[2]);
+        const era = m[1];
+        if (era === '平成' || era === 'H') y = 1988 + n;
+        else if (era || n <= 30) y = 2018 + n; // 元号が読めないときは令和とみなす
+        else return '';
+        mo = Number(m[3]); d = Number(m[4]);
+      } else if ((m = t.match(/(20\d\d)[年\/.\-](\d{1,2})[月\/.\-](\d{1,2})/))) {
+        y = Number(m[1]); mo = Number(m[2]); d = Number(m[3]);
+      } else return '';
+      const iso = y + '-' + pad2(mo) + '-' + pad2(d);
+      const dt = new Date(iso + 'T00:00:00Z');
+      return (!Number.isNaN(dt.getTime()) && dt.toISOString().slice(0, 10) === iso) ? iso : '';
+    }
+
+    function parseAmount(text) {
+      const digits = String(text || '').replace(/[^\d]/g, '');
+      return digits && digits.length <= 7 ? Number(digits) : null;
+    }
+
+    async function readPdfFirstPage(file) {
+      await loadLib('pdfjs');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+      const page = await pdf.getPage(1);
+      const v1 = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: 2480 / v1.width });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+
+      const ocr = await getOcr();
+      const [idText, dateText, amtText, amt2Text] = [
+        (await ocr.jpn.recognize(cropForOcr(canvas, REG.id))).data.text,
+        (await ocr.jpn.recognize(cropForOcr(canvas, REG.date))).data.text,
+        (await ocr.eng.recognize(cropForOcr(canvas, REG.amt))).data.text,
+        (await ocr.eng.recognize(cropForOcr(canvas, REG.amt2))).data.text
+      ];
+      const thumb = thumbOf(canvas);
+      canvas.width = 1; canvas.height = 1;
+      return { num: parseId(idText), date: parseDate(dateText), amtTop: parseAmount(amtText), amtBox: parseAmount(amt2Text), thumb };
+    }
+
+    // ── 一覧の状態 ──
+    const MAX_PDF = 3 * 1024 * 1024;
+    let batchRows = [];
+    let batchBusy = false;
+    let batchSeq = 0;
+
+    function amountStatus(r) {
+      if (r.amtManual) return 'manual';
+      if (r.amtTop && r.amtBox) return r.amtTop === r.amtBox ? 'match' : 'mismatch';
+      return (r.amtTop || r.amtBox) ? 'single' : 'none';
+    }
+    function amountValid(a) { return Number.isInteger(a) && a >= 1 && a <= 200000; }
+    function dateOk(iso) {
+      if (!iso) return false;
+      const t = new Date(iso + 'T00:00:00').getTime();
+      const now = Date.now();
+      return t <= now + 86400000 && t >= now - 400 * 86400000;
+    }
+    function canUpload(r) { return !!(r.check && r.check.docVerified && r.date && r.fileOk && !r.uploaded); }
+    function canCharge(r) { return !!(r.check && r.check.charge && amountValid(r.amount) && !r.charged); }
+
+    function setDefaults(r) {
+      r.doUpload = canUpload(r) && dateOk(r.date);
+      const st = amountStatus(r);
+      r.doCharge = canCharge(r) && (st === 'match' || st === 'manual');
+    }
+
+    async function recheck(rows) {
+      const targets = rows.filter(r => r.num);
+      rows.filter(r => !r.num).forEach(r => { r.check = null; });
+      if (targets.length === 0) return;
+      for (let i = 0; i < targets.length; i += 100) {
+        const part = targets.slice(i, i + 100);
+        const data = await api({ action: 'batch-check', items: part.map(r => ({ cardNumber: r.num, date: r.date })) });
+        part.forEach((r, k) => { r.check = data.results[k]; setDefaults(r); });
+      }
+    }
+
+    function statusLines(r) {
+      const lines = [];
+      const add = (cls, text) => lines.push({ cls, text });
+      if (r.state === 'reading') { add('', '読み取り中...'); return lines; }
+      if (r.readNote) add('warnt', r.readNote);
+      if (!r.num) add('ng', '患者番号が読めません。入力してください');
+      else if (!r.check) add('', '確認中...');
+      else if (!r.check.registered) add('', 'この番号は、LINEの診察券に登録されていません（対象外）');
+      else {
+        if (r.check.docVerified) add('good', 'LINE登録：' + r.check.docName + ' 様（確認済み）');
+        else add('warnt', 'LINEに登録がありますが、受付で「確認済みにする」が済んでいません（明細書はアップロードできません）');
+        if (r.check.charge) add('good', 'カード：' + r.check.charge.brand.toUpperCase() + ' •••• ' + r.check.charge.last4 + '（請求できます）');
+        else add('', 'カード決済は、未登録または未確認です');
+      }
+      if (!r.date) add('ng', '発行日が読めません。入力してください');
+      else if (!dateOk(r.date)) add('warnt', '発行日が、今日から離れています。確認してください（' + r.date + '）');
+      const st = amountStatus(r);
+      if (st === 'match') add('good', '請求金額：2か所の読み取りが一致しました');
+      else if (st === 'manual') add('', '請求金額：手入力');
+      else if (st === 'mismatch') add('warnt', '請求金額：2か所の読み取りが一致しません（' + r.amtTop + ' 円 と ' + r.amtBox + ' 円）。見本の画像を見て、入力してください');
+      else if (st === 'single') add('warnt', '請求金額：1か所しか読めませんでした。見本の画像を見て、確かめてください');
+      else add('warnt', '請求金額が読めません。請求する場合は、入力してください');
+      if (!r.fileOk) add('ng', 'ファイルが3MBを超えているため、アップロードできません');
+      if (r.check && r.check.existing && r.check.existing.some(e => e.kind === r.kind)) {
+        add('warnt', '同じ日の同じ種類の明細書が、すでにあります。アップロードすると、差し替えます');
+      }
+      if (r.uploaded) add('good', 'アップロード済み');
+      if (r.charged) add('good', '請求済み：' + r.amount.toLocaleString('ja-JP') + ' 円（決済完了）');
+      if (r.error) add('ng', r.error);
+      return lines;
+    }
+
+    function renderBatchRow(r) {
+      const box = document.createElement('div');
+            box.className = 'brow' + (r.state === 'ready' && r.check && !r.check.registered ? ' skip' : '') +
+        ((r.uploaded || r.charged) && !canUpload(r) && !canCharge(r) ? ' done' : '');
+      box.dataset.rid = r.id;
+
+      const left = document.createElement('div');
+      if (r.thumb) {
+        const im = document.createElement('img');
+        im.className = 'thumb';
+        im.src = r.thumb;
+        im.alt = '読み取った場所の見本';
+        left.appendChild(im);
+      }
+      const fn = document.createElement('div');
+      fn.className = 'fname';
+      fn.textContent = r.file.name;
+      left.appendChild(fn);
+
+      const right = document.createElement('div');
+      const fields = document.createElement('div');
+      fields.className = 'fields';
+      const mk = (label, input) => {
+        const l = document.createElement('label');
+        l.className = 'field';
+        l.append(label, input);
+        return l;
+      };
+
+      const numIn = document.createElement('input');
+      numIn.type = 'text'; numIn.inputMode = 'numeric'; numIn.maxLength = 12; numIn.value = r.num; numIn.style.maxWidth = '120px';
+      numIn.addEventListener('change', async () => {
+        r.num = numIn.value.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+        r.check = null; r.readNote = '';
+        r.doUpload = false; r.doCharge = false;
+        renderBatch();
+        try { await recheck([r]); } catch (e) { if (e.status === 401) { tryLogin(); return; } r.error = '確認に失敗しました'; }
+        renderBatch();
+      });
+      const dateIn = document.createElement('input');
+      dateIn.type = 'date'; dateIn.value = r.date;
+      dateIn.addEventListener('change', async () => {
+        r.date = dateIn.value; r.check = r.check && Object.assign({}, r.check, { existing: [] });
+        try { await recheck([r]); } catch (e) { if (e.status === 401) { tryLogin(); return; } }
+        renderBatch();
+      });
+      const amtIn = document.createElement('input');
+      amtIn.type = 'number'; amtIn.inputMode = 'numeric'; amtIn.min = 1; amtIn.max = 200000;
+      amtIn.value = r.amount || ''; amtIn.style.maxWidth = '120px';
+      amtIn.disabled = r.charged || batchBusy; // 請求済みの金額は変えない（二重請求を防ぐ）
+      amtIn.addEventListener('change', () => {
+        const v = Number(amtIn.value);
+        r.amount = amountValid(v) ? v : null;
+        r.amtManual = true;
+        r.chargeKey = newKey(); // 金額を変えたら、別の請求として扱う
+        r.doCharge = canCharge(r);
+        renderBatch();
+      });
+      const kindSel = document.createElement('select');
+      Object.keys(KIND_NAMES).forEach(k => {
+        const o = document.createElement('option');
+        o.value = k; o.textContent = KIND_NAMES[k];
+        if (k === r.kind) o.selected = true;
+        kindSel.appendChild(o);
+      });
+      kindSel.addEventListener('change', () => { r.kind = kindSel.value; renderBatch(); });
+
+      fields.append(mk('患者番号', numIn), mk('発行日（診療日）', dateIn), mk('請求金額（円）', amtIn), mk('種類', kindSel));
+      right.appendChild(fields);
+
+      const st = document.createElement('div');
+      st.className = 'st';
+      statusLines(r).forEach(l => {
+        const d = document.createElement('div');
+        if (l.cls) d.className = l.cls;
+        d.textContent = l.text;
+        st.appendChild(d);
+      });
+      right.appendChild(st);
+
+      const checks = document.createElement('div');
+      checks.className = 'checks';
+      const mkCheck = (label, enabled, checked, onChange) => {
+        const l = document.createElement('label');
+        if (!enabled) l.className = 'off';
+        const c = document.createElement('input');
+        c.type = 'checkbox'; c.checked = enabled && checked; c.disabled = !enabled || batchBusy;
+        c.addEventListener('change', () => { onChange(c.checked); updateSummary(); });
+        l.append(c, label);
+        return l;
+      };
+      checks.append(
+        mkCheck('明細書をアップロード', canUpload(r), r.doUpload, v => { r.doUpload = v; }),
+        mkCheck('カードに請求する', canCharge(r), r.doCharge, v => { r.doCharge = v; })
+      );
+      if (r.state === 'ready') right.appendChild(checks);
+
+      box.append(left, right);
+      return box;
+    }
+
+    function renderBatch() {
+      const list = el('batchList');
+      list.innerHTML = '';
+      // 対象になる行を上に、LINE未登録の行を下に
+      const rank = r => (r.check && !r.check.registered ? 2 : 0) + (r.state === 'reading' ? 1 : 0);
+      batchRows.slice().sort((a, b) => rank(a) - rank(b) || a.id - b.id).forEach(r => list.appendChild(renderBatchRow(r)));
+      el('batchSum').hidden = batchRows.length === 0;
+      updateSummary();
+    }
+
+    function updateSummary() {
+      const up = batchRows.filter(r => r.state === 'ready' && r.doUpload && canUpload(r));
+      const ch = batchRows.filter(r => r.state === 'ready' && r.doCharge && canCharge(r));
+      const total = ch.reduce((s, r) => s + r.amount, 0);
+      const skipped = batchRows.filter(r => r.check && !r.check.registered).length;
+      el('batchSumText').textContent = 'アップロード ' + up.length + ' 件　／　請求 ' + ch.length + ' 件（合計 ' +
+        total.toLocaleString('ja-JP') + ' 円）' + (skipped ? '　／　LINE未登録で対象外 ' + skipped + ' 件' : '');
+      el('batchRunBtn').disabled = batchBusy || (up.length + ch.length === 0);
+      el('batchClearBtn').disabled = batchBusy;
+    }
+
+    async function handleFiles(fileList) {
+      const files = Array.from(fileList).filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+      if (files.length === 0) { setMsg('batchMsg', 'PDFファイルを入れてください', 'warn'); return; }
+      const fresh = files.filter(f => !batchRows.some(r => r.file.name === f.name && r.file.size === f.size));
+      if (fresh.length === 0) { setMsg('batchMsg', 'すでに一覧にあるファイルです', 'warn'); return; }
+      batchBusy = true;
+      const rows = fresh.map(f => ({
+        id: ++batchSeq, file: f, state: 'reading', num: '', date: '', amount: null, amtTop: null, amtBox: null, amtManual: false,
+        kind: el('batchKind').value, fileOk: f.size <= MAX_PDF, check: null, thumb: '', readNote: '', error: '',
+        doUpload: false, doCharge: false, uploaded: false, charged: false, chargeKey: newKey()
+      }));
+      batchRows.push(...rows);
+      renderBatch();
+
+      let done = 0;
+      for (const r of rows) {
+        setMsg('batchMsg', '読み取り中... ' + (done + 1) + ' / ' + rows.length + '（初回は、読み取りの準備に少し時間がかかります）', '');
+        try {
+          const got = await readPdfFirstPage(r.file);
+          r.num = got.num; r.date = got.date; r.amtTop = got.amtTop; r.amtBox = got.amtBox; r.thumb = got.thumb;
+          const st = amountStatus(r);
+          r.amount = (st === 'match' || st === 'single') ? (r.amtTop || r.amtBox) : (r.amtTop || r.amtBox || null);
+          if (!amountValid(r.amount)) r.amount = null;
+        } catch (e) {
+          r.readNote = '自動で読み取れませんでした。下の欄に、入力してください';
+        }
+        r.state = 'ready';
+        done++;
+        renderBatch();
+      }
+
+      setMsg('batchMsg', 'LINEの登録を確認中...', '');
+      try {
+        await recheck(rows);
+        setMsg('batchMsg', '読み取りが終わりました。見本の画像と見比べて、内容を確かめてから、実行してください', 'ok');
+      } catch (e) {
+        if (e.status === 401) { batchBusy = false; tryLogin(); return; }
+        setMsg('batchMsg', 'LINEの登録の確認に失敗しました。通信環境を確認してください', 'err');
+      }
+      batchBusy = false;
+      renderBatch();
+    }
+
+    const dropEl = el('batchDrop');
+    dropEl.addEventListener('click', () => { if (!batchBusy) el('batchFile').click(); });
+    el('batchFile').addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+    ['dragenter', 'dragover'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('over'); }));
+    dropEl.addEventListener('drop', e => { if (!batchBusy) handleFiles(e.dataTransfer.files); });
+    // ページのほかの場所に落としても、ブラウザがPDFを開いてしまわないようにする
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => e.preventDefault());
+
+    el('batchKind').addEventListener('change', () => {
+      batchRows.filter(r => !r.uploaded).forEach(r => { r.kind = el('batchKind').value; });
+      renderBatch();
+    });
+    el('batchClearBtn').addEventListener('click', () => {
+      if (batchBusy) return;
+      if (batchRows.some(r => r.state === 'ready' && ((r.doUpload && canUpload(r)) || (r.doCharge && canCharge(r)))) &&
+        !confirm('まだ実行していない内容があります。一覧を消しますか？')) return;
+      batchRows = [];
+      setMsg('batchMsg', '', '');
+      renderBatch();
+    });
+
+    function readBase64(file) {
+      return new Promise((resolve, reject) => {
+        const rd = new FileReader();
+        rd.onload = () => resolve(String(rd.result).split(',')[1] || '');
+        rd.onerror = reject;
+        rd.readAsDataURL(file);
+      });
+    }
+
+    el('batchRunBtn').addEventListener('click', async () => {
+      if (batchBusy) return;
+      const ups = batchRows.filter(r => r.state === 'ready' && r.doUpload && canUpload(r));
+      const chs = batchRows.filter(r => r.state === 'ready' && r.doCharge && canCharge(r));
+      if (ups.length + chs.length === 0) return;
+
+      const bad = chs.filter(r => !dateOk(r.date) || amountStatus(r) === 'mismatch' || amountStatus(r) === 'none');
+      const dupNums = chs.map(r => r.num).filter((n, i, a) => a.indexOf(n) !== i);
+      let text = '次の内容を実行します。\n\n';
+      if (ups.length) text += '【明細書をアップロード】' + ups.length + ' 件\n' +
+        ups.map(r => '　' + r.check.docName + ' 様（診察券 ' + r.num + '）' + r.date.replace(/-/g, '/') + '　' + KIND_NAMES[r.kind]).join('\n') + '\n\n';
+      if (chs.length) text += '【カードに請求】' + chs.length + ' 件\n' +
+        chs.map(r => '　' + r.check.charge.name + ' 様（診察券 ' + r.num + '）' + r.amount.toLocaleString('ja-JP') + ' 円').join('\n') +
+        '\n　合計 ' + chs.reduce((s, r) => s + r.amount, 0).toLocaleString('ja-JP') + ' 円\n\n';
+      if (bad.length) text += '⚠ 金額や発行日に注意が出ている請求が ' + bad.length + ' 件あります。\n';
+      const upKeys = ups.map(r => r.num + '|' + r.date + '|' + r.kind);
+      if (upKeys.some((k, i) => upKeys.indexOf(k) !== i)) text += '⚠ 同じ診察券・同じ日・同じ種類のPDFが複数あります（後のものに差し替わります）。\n';
+      if (dupNums.length) text +='⚠ 同じ診察券番号への請求が、複数あります（' + Array.from(new Set(dupNums)).join('、') + '）。\n';
+      text += '見本の画像と、領収書の内容を確認済みですか？（請求は取り消せません。返金は管理者のみです）';
+      if (!confirm(text)) return;
+
+      batchBusy = true;
+      renderBatch();
+      let nUp = 0, nCh = 0, nFail = 0;
+      for (const r of batchRows.filter(x => x.state === 'ready')) {
+        r.error = '';
+        try {
+          if (r.doUpload && canUpload(r)) {
+            await api({
+              action: 'doc-upload', cardNumber: r.num, date: r.date, kind: r.kind,
+              pdfBase64: await readBase64(r.file), replace: true, requireVerified: true, light: true
+            });
+            r.uploaded = true; r.doUpload = false; nUp++;
+            if (r.check) r.check.existing = [{ id: 'new', kind: r.kind }];
+          }
+        } catch (err) {
+          if (err.status === 401) { batchBusy = false; tryLogin(); return; }
+          r.error = err.status === 409 ? 'アップロードできません：受付で「確認済みにする」が済んでいません' : 'アップロードに失敗しました';
+          nFail++;
+          r.doCharge = false; // アップロードで問題が出た行は、請求まで進めない
+          renderBatch();
+          continue;
+        }
+        try {
+          if (r.doCharge && canCharge(r)) {
+            const data = await api({ action: 'charge', cardNumber: r.num, amount: r.amount, idempotencyKey: r.chargeKey, receiptDate: r.date });
+            if (data.ok) { r.charged = true; r.doCharge = false; nCh++; }
+            else {
+              r.doCharge = false; nFail++;
+              r.error = data.reason === 'not_verified' ? '請求できません：確認済みのカードがありません'
+                : data.reason === 'already_charged' ? 'この発行日・金額は、すでに請求済みのため、請求しませんでした（二重請求の防止）'
+                : '請求できませんでした（' + data.reason + '）。窓口でのお支払いに切り替えてください';
+            }
+          }
+        } catch (err) {
+          if (err.status === 401) { batchBusy = false; tryLogin(); return; }
+          r.doCharge = false; nFail++;
+          r.error = '通信に失敗しました。請求されたか不明です。「直近の請求」を確認してください';
+        }
+        renderBatch();
+      }
+      batchBusy = false;
+      renderBatch();
+      loadLog();
+      setMsg('batchMsg', 'アップロード ' + nUp + ' 件、請求 ' + nCh + ' 件を実行しました' + (nFail ? '（うち、うまくいかなかったもの ' + nFail + ' 件。赤い表示をご確認ください）' : ''), nFail ? 'warn' : 'ok');
     });
 
     if (pin) tryLogin();

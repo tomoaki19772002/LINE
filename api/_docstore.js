@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { getDb } = require('./_firebase');
-const { encrypt, decrypt, deriveKey } = require('./_cardstore');
+const { encrypt, decrypt, deriveKey, normalizeCardNumber } = require('./_cardstore');
 
 // 診療明細書（PDF）の保管。
 // ・PDFは暗号化して Realtime Database に置く（公開読み取りでも、鍵がなければ読めない）
@@ -10,7 +10,9 @@ const { encrypt, decrypt, deriveKey } = require('./_cardstore');
 const MAX_PDF_BYTES = 3 * 1024 * 1024;
 
 function numberKey(cardNumber) {
-  return crypto.createHmac('sha256', deriveKey('doc-num')).update(cardNumber).digest('hex');
+  // 先頭の0の有無で別の番号にならないよう、正規化してから伏せる
+  const n = normalizeCardNumber(cardNumber) || String(cardNumber);
+  return crypto.createHmac('sha256', deriveKey('doc-num')).update(n).digest('hex');
 }
 
 // ── 受付で確認済みの診察券（番号ごとに、持ち主は1人だけ）──
@@ -28,7 +30,7 @@ async function setVerifiedOwner(cardNumber, ownerId) {
 // PDF本体は statementBlobs に、AES-256-GCMで暗号化して置く（一覧用の情報は statements に別に置く）。
 // 暗号鍵はサーバーだけが持つため、データベースが公開読み取りでも、中身は読めない。
 // 明細書の種類：保険診療分・自費分など。同じ日に何枚でも置ける
-const KINDS = { insurance: '保険診療分', self: '自費分', other: 'その他' };
+const KINDS = { receipt: '領収書・診療明細書', insurance: '保険診療分', self: '自費分', other: 'その他' };
 
 async function saveStatement(cardNumber, date, kind, pdfBuffer) {
   const nKey = numberKey(cardNumber);

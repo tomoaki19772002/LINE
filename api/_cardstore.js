@@ -61,6 +61,13 @@ function toHalfWidthDigits(text) {
   return text.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
 }
 
+// 診察券番号の正規化：全角→半角、先頭の0を除く（レセコンの「007201」と、患者さんが入れた「7201」を同じ番号として扱う）
+function normalizeCardNumber(value) {
+  const s = toHalfWidthDigits(String(value == null ? '' : value).trim());
+  if (!/^\d{1,12}$/.test(s) || /^0+$/.test(s)) return null;
+  return s.replace(/^0+/, '');
+}
+
 // 入力値を検証して正規化する。不正なら null を返す
 function parseCardInput(input) {
   if (!input || typeof input !== 'object') return null;
@@ -68,8 +75,8 @@ function parseCardInput(input) {
     return null;
   }
 
-  const cardNumber = toHalfWidthDigits(input.cardNumber.trim());
-  if (!/^\d{1,12}$/.test(cardNumber)) return null;
+  const cardNumber = normalizeCardNumber(input.cardNumber);
+  if (!cardNumber) return null;
 
   const name = input.name.trim();
   if (name.length < 1 || name.length > 40) return null;
@@ -83,4 +90,4 @@ function parseCardInput(input) {
   return { cardNumber, name, birth };
 }
 
-module.exports = { MAX_CARDS, loadCards, saveCards, parseCardInput, encrypt, decrypt, deriveKey, userPath };
+module.exports = { MAX_CARDS, normalizeCardNumber, loadCards, saveCards, parseCardInput, encrypt, decrypt, deriveKey, userPath };

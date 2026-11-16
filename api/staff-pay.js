@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const Stripe = require('stripe');
 const { getDb } = require('./_firebase');
-const { encrypt, decrypt } = require('./_cardstore');
+const { encrypt, decrypt, normalizeCardNumber } = require('./_cardstore');
 const { loadAllRecords, loadRecordById, saveRecordById, loadCardsOf } = require('./_paystore');
-const { upsertPayment } = require('./_payments');
+const { upsertPayment, listPayments } = require('./_payments');
 const {
   MAX_PDF_BYTES, KINDS, getVerifiedOwner, setVerifiedOwner, saveStatement, listStatements, deleteStatement
 } = require('./_docstore');
@@ -37,18 +37,21 @@ async function recordPinFail() {
   await ref.set(fails);
 }
 
+// 診察券番号：全角→半角、先頭の0を除いた形（007201 と 7201 は同じ番号）
 function parseCardNumber(value) {
-  const s = String(value || '').trim().replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
-  return /^\d{1,12}$/.test(s) ? s : null;
+  return normalizeCardNumber(value);
 }
+
+// 保存済みの番号（先頭の0つきで登録されたもの）も、同じ形にそろえて比べる
+const sameNumber = (stored, cardNumber) => normalizeCardNumber(stored) === cardNumber;
 
 // 受付が確認済みにした診察券番号から、請求先を探す
 async function findVerified(cardNumber) {
   const all = await loadAllRecords();
   for (const { id, record } of all) {
-    if (record.verifiedCardNumber !== cardNumber || !record.paymentMethodId) continue;
+    if (!sameNumber(record.verifiedCardNumber, cardNumber) || !record.paymentMethodId) continue;
     const cards = await loadCardsOf(record);
-    const card = cards.find(c => c.cardNumber === cardNumber);
+    const card = cards.find(c => sameNumber(c.cardNumber, cardNumber));
     if (!card) continue; // 本人が診察券を削除していたら請求しない
     return { id, record, card };
   }
@@ -62,7 +65,7 @@ async function findCardOwners(cardNumber) {
   const owners = [];
   for (const [ownerId, raw] of Object.entries(all)) {
     try {
-      const card = decrypt(raw).find(c => c.cardNumber === cardNumber);
+      const card = decrypt(raw).find(c => sameNumber(c.cardNumber, cardNumber));
       if (card) owners.push({ ownerId, name: card.name, birth: card.birth });
     } catch (e) {
       // 復号できない記録は読み飛ばす
@@ -80,6 +83,47 @@ async function docOverview(cardNumber) {
     owners: owners.map(o => Object.assign({}, o, { verified: o.ownerId === verifiedOwnerId })),
     statements
   };
+}
+
+// PDFまとめ読み取り用：診察券番号ごとに「LINEに登録している人」「確認済みか」「請求できるか」「同じ日の明細書」をまとめて調べる
+async function batchCheck(items) {
+  const [cardsSnap, allRecords] = await Promise.all([getDb().ref('patientCards').once('value'), loadAllRecords()]);
+
+  const ownersByNum = new Map();
+  for (const [ownerId, raw] of Object.entries(cardsSnap.val() || {})) {
+    let cards;
+    try { cards = decrypt(raw); } catch (e) { continue; }
+    for (const c of cards) {
+      const n = normalizeCardNumber(c.cardNumber);
+      if (!n) continue;
+      if (!ownersByNum.has(n)) ownersByNum.set(n, []);
+      ownersByNum.get(n).push({ ownerId, name: c.name });
+    }
+  }
+
+  const chargeByNum = new Map();
+  for (const { record } of allRecords) {
+    const n = normalizeCardNumber(record.verifiedCardNumber);
+    if (!n || !record.paymentMethodId) continue;
+    const cards = await loadCardsOf(record);
+    const card = cards.find(c => sameNumber(c.cardNumber, n));
+    if (card) chargeByNum.set(n, { name: card.name, brand: record.brand, last4: record.last4 });
+  }
+
+  return Promise.all(items.map(async it => {
+    const n = it.cardNumber;
+    const owners = ownersByNum.get(n) || [];
+    const out = { cardNumber: n, registered: owners.length > 0, docVerified: false, docName: null, charge: chargeByNum.get(n) || null, existing: [] };
+    if (owners.length === 0) return out;
+    const verifiedOwnerId = await getVerifiedOwner(n);
+    const docOwner = owners.find(o => o.ownerId === verifiedOwnerId);
+    out.docVerified = !!docOwner;
+    out.docName = docOwner ? docOwner.name : null;
+    if (it.date) {
+      out.existing = (await listStatements(n)).filter(s => s.date === it.date).map(s => ({ id: s.id, kind: s.kind }));
+    }
+    return out;
+  }));
 }
 
 async function writeLog(entry) {
@@ -120,7 +164,7 @@ module.exports = async (req, res) => {
     // 受付の確認待ちの登録一覧：自己申告の診察券と、カードの種類・下4桁
     if (body.action === 'pending') {
       const all = await loadAllRecords();
-      const verifiedNumbers = new Set(all.map(a => a.record.verifiedCardNumber).filter(Boolean));
+      const verifiedNumbers = new Set(all.map(a => normalizeCardNumber(a.record.verifiedCardNumber)).filter(Boolean));
       const items = [];
       for (const { id, record } of all) {
         if (!record.paymentMethodId || record.verifiedCardNumber) continue;
@@ -132,7 +176,7 @@ module.exports = async (req, res) => {
           registeredAt: record.consentAt,
           // taken: すでに別の人のカードが、この診察券番号で確認済み
           cards: cards.map(c => ({
-            cardNumber: c.cardNumber, name: c.name, birth: c.birth, taken: verifiedNumbers.has(c.cardNumber)
+            cardNumber: c.cardNumber, name: c.name, birth: c.birth, taken: verifiedNumbers.has(normalizeCardNumber(c.cardNumber))
           }))
         });
       }
@@ -155,14 +199,14 @@ module.exports = async (req, res) => {
         return;
       }
       const cards = await loadCardsOf(record);
-      if (!cards.some(c => c.cardNumber === cardNumber)) {
+      if (!cards.some(c => sameNumber(c.cardNumber, cardNumber))) {
         res.status(400).json({ error: 'card number not registered' });
         return;
       }
       // 同じ診察券番号を別の人が確認済みにしていたら、そちらは取り消す（請求先は1人だけ）
       const all = await loadAllRecords();
       for (const other of all) {
-        if (other.id !== ref && other.record.verifiedCardNumber === cardNumber) {
+        if (other.id !== ref && sameNumber(other.record.verifiedCardNumber, cardNumber)) {
           delete other.record.verifiedCardNumber;
           delete other.record.verifiedAt;
           await saveRecordById(other.id, other.record);
@@ -211,6 +255,17 @@ module.exports = async (req, res) => {
         return;
       }
 
+      // 領収書の発行日つきの請求（PDFまとめ読み取り）：同じ日・同じ金額を請求済みなら、二重請求を止める
+      const receiptDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.receiptDate || '')) ? String(body.receiptDate) : '';
+      if (receiptDate) {
+        const dup = (await listPayments(cardNumber)).some(p =>
+          p.receiptDate === receiptDate && p.amount === amount && p.status === 'succeeded' && !p.refunded);
+        if (dup) {
+          res.status(200).json({ ok: false, reason: 'already_charged' });
+          return;
+        }
+      }
+
       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
       let intent;
       try {
@@ -222,7 +277,7 @@ module.exports = async (req, res) => {
           off_session: true,
           confirm: true,
           description: '診療費',
-          metadata: { cardNumber }
+          metadata: receiptDate ? { cardNumber, receiptDate } : { cardNumber }
         }, { idempotencyKey: key });
       } catch (e) {
         // カード会社に断られた場合（残高不足・認証が必要など）
@@ -241,7 +296,8 @@ module.exports = async (req, res) => {
         // 患者さんの支払い履歴用。あとから届く Webhook でも、同じ決済IDで上書き・追記される
         await upsertPayment(cardNumber, intent.id, {
           amount, status: 'succeeded', at: Date.now(),
-          brand: found.record.brand, last4: found.record.last4
+          brand: found.record.brand, last4: found.record.last4,
+          ...(receiptDate ? { receiptDate } : {})
         });
       }
       res.status(200).json({ ok, reason: ok ? null : intent.status });
@@ -257,6 +313,26 @@ module.exports = async (req, res) => {
       }).filter(Boolean);
       items.sort((a, b) => b.at - a.at);
       res.status(200).json({ items });
+      return;
+    }
+
+    // ── PDFまとめ読み取り ──────────────
+    if (body.action === 'batch-check') {
+      const raw = Array.isArray(body.items) ? body.items : [];
+      if (raw.length === 0 || raw.length > 100) {
+        res.status(400).json({ error: 'invalid input' });
+        return;
+      }
+      const items = [];
+      for (const it of raw) {
+        const cardNumber = parseCardNumber(it && it.cardNumber);
+        const date = it && /^\d{4}-\d{2}-\d{2}$/.test(String(it.date || '')) ? String(it.date) : '';
+        items.push({ cardNumber, date });
+      }
+      const valid = items.filter(i => i.cardNumber);
+      const results = valid.length ? await batchCheck(valid) : [];
+      let k = 0;
+      res.status(200).json({ results: items.map(i => (i.cardNumber ? results[k++] : null)) });
       return;
     }
 
@@ -309,7 +385,24 @@ module.exports = async (req, res) => {
         res.status(400).json({ error: 'not a pdf' });
         return;
       }
+      // まとめ読み取りから：確認済みの診察券だけに置く。同じ日・同じ種類があれば差し替える
+      if (body.requireVerified) {
+        const owners = await findCardOwners(cardNumber);
+        const verifiedOwnerId = await getVerifiedOwner(cardNumber);
+        if (!owners.some(o => o.ownerId === verifiedOwnerId)) {
+          res.status(409).json({ error: 'not verified' });
+          return;
+        }
+      }
+      if (body.replace) {
+        const same = (await listStatements(cardNumber)).filter(s => s.date === date && s.kind === kind);
+        for (const s of same) await deleteStatement(cardNumber, s.id);
+      }
       await saveStatement(cardNumber, date, kind, pdf);
+      if (body.light) {
+        res.status(200).json({ ok: true });
+        return;
+      }
       res.status(200).json(await docOverview(cardNumber));
       return;
     }
