@@ -80,12 +80,15 @@
     }
     .drop.over { border-color: #1565c0; background: #e3f2fd; }
     .brow {
-      display: grid; grid-template-columns: 340px 1fr; gap: 14px; padding: 12px;
+      display: grid; grid-template-columns: 520px 1fr; gap: 14px; padding: 12px;
       border: 1.5px solid #cfd8dc; border-radius: 14px; align-items: start;
     }
     .brow.skip { opacity: 0.55; background: #fafafa; }
     .brow.done { border-color: #81c784; background: #f1f8f1; }
-    .brow .thumb { width: 100%; border: 1px solid #cfd8dc; border-radius: 8px; background: #fff; min-height: 60px; }
+    .brow .thumb { width: 100%; border: 1px solid #90a4ae; border-radius: 8px; background: #fff; min-height: 60px; cursor: zoom-in; }
+    .brow .zoomhint { font-size: 0.75rem; color: #78909c; margin-top: 2px; }
+    #zoomOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 50; overflow: auto; padding: 16px; cursor: zoom-out; }
+    #zoomOverlay img { display: block; margin: 0 auto; width: min(1800px, 100%); background: #fff; border-radius: 6px; }
     .brow .fname { font-size: 0.75rem; color: #78909c; word-break: break-all; margin-top: 4px; }
     .brow .fields { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
     .brow input[type=text], .brow input[type=number], .brow input[type=date], .brow select {
@@ -666,14 +669,40 @@
       return out;
     }
 
-    function thumbOf(canvas) {
-      const sx = Math.round(canvas.width * REG.thumb[0]), sy = Math.round(canvas.height * REG.thumb[1]);
-      const sw = Math.round(canvas.width * (REG.thumb[2] - REG.thumb[0])), sh = Math.round(canvas.height * (REG.thumb[3] - REG.thumb[1]));
+    // 画面に出す画像：薄いスキャンでも読めるよう、白黒にして、文字を濃くする
+    function enhancedImage(canvas, reg, width, quality) {
+      const sx = Math.round(canvas.width * reg[0]), sy = Math.round(canvas.height * reg[1]);
+      const sw = Math.round(canvas.width * (reg[2] - reg[0])), sh = Math.round(canvas.height * (reg[3] - reg[1]));
       const out = document.createElement('canvas');
-      out.width = 600; out.height = Math.round(600 * sh / sw);
-      out.getContext('2d').drawImage(canvas, sx, sy, sw, sh, 0, 0, out.width, out.height);
-      return out.toDataURL('image/jpeg', 0.7);
+      out.width = width; out.height = Math.round(width * sh / sw);
+      const ctx = out.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      const img = ctx.getImageData(0, 0, out.width, out.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.max(0, Math.min(255, (d[i] - 70) * 255 / 120)); // 赤の成分を使い、薄い灰色を白へ、濃い部分を黒へ
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+      ctx.putImageData(img, 0, 0);
+      return out.toDataURL('image/jpeg', quality);
     }
+    const thumbOf = canvas => enhancedImage(canvas, REG.thumb, 1040, 0.92);
+    const fullOf = canvas => enhancedImage(canvas, [0, 0, 1, 1], 1800, 0.85);
+
+    function showZoom(src) {
+      let ov = el('zoomOverlay');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'zoomOverlay';
+        ov.appendChild(document.createElement('img'));
+        ov.addEventListener('click', () => { ov.hidden = true; });
+        document.body.appendChild(ov);
+      }
+      ov.firstChild.src = src;
+      ov.hidden = false;
+    }
+    window.addEventListener('keydown', e => { const ov = el('zoomOverlay'); if (e.key === 'Escape' && ov) ov.hidden = true; });
 
     function parseId(text) {
       const t = String(text || '').replace(/\s+/g, '');
@@ -727,9 +756,9 @@
         (await ocr.eng.recognize(cropForOcr(canvas, REG.amt))).data.text,
         (await ocr.eng.recognize(cropForOcr(canvas, REG.amt2))).data.text
       ];
-      const thumb = thumbOf(canvas);
+      const thumb = thumbOf(canvas), full = fullOf(canvas);
       canvas.width = 1; canvas.height = 1;
-      return { num: parseId(idText), date: parseDate(dateText), amtTop: parseAmount(amtText), amtBox: parseAmount(amt2Text), thumb };
+      return { num: parseId(idText), date: parseDate(dateText), amtTop: parseAmount(amtText), amtBox: parseAmount(amt2Text), thumb, full };
     }
 
     // ── 一覧の状態 ──
@@ -814,7 +843,13 @@
         im.className = 'thumb';
         im.src = r.thumb;
         im.alt = '読み取った場所の見本';
+        im.title = 'クリックで、領収書全体を拡大';
+        im.addEventListener('click', () => showZoom(r.full || r.thumb));
         left.appendChild(im);
+        const zh = document.createElement('div');
+        zh.className = 'zoomhint';
+        zh.textContent = '画像をクリックすると、領収書全体を大きく見られます（閉じるはクリックまたはEsc）';
+        left.appendChild(zh);
       }
       const fn = document.createElement('div');
       fn.className = 'fname';
@@ -943,7 +978,7 @@
         setMsg('batchMsg', '読み取り中... ' + (done + 1) + ' / ' + rows.length + '（初回は、読み取りの準備に少し時間がかかります）', '');
         try {
           const got = await readPdfFirstPage(r.file);
-          r.num = got.num; r.date = got.date; r.amtTop = got.amtTop; r.amtBox = got.amtBox; r.thumb = got.thumb;
+          r.num = got.num; r.date = got.date; r.amtTop = got.amtTop; r.amtBox = got.amtBox; r.thumb = got.thumb; r.full = got.full;
           const st = amountStatus(r);
           r.amount = (st === 'match' || st === 'single') ? (r.amtTop || r.amtBox) : (r.amtTop || r.amtBox || null);
           if (!amountValid(r.amount)) r.amount = null;
