@@ -634,40 +634,8 @@
       return ocrWorkers;
     }
 
-    // 読み取る場所（ページ全体に対する割合）：[左, 上, 右, 下]
-    const REG = {
-      id:   [0.056, 0.105, 0.215, 0.142],  // 「患者番号 007201」の行
-      date: [0.815, 0.113, 0.950, 0.145],  // 「令和08年11月16日」（発行日）
-      amt:  [0.188, 0.187, 0.320, 0.218],  // 先頭の「¥ 1,090」
-      amt2: [0.098, 0.381, 0.143, 0.400],  // 「今回請求額」の欄の金額
-      thumb:[0.040, 0.085, 0.720, 0.245]   // 画面に出す見本（名前の確認用）
-    };
-
-    // 切り出して2倍に拡大し、赤の線（赤枠）は消える白黒画像にする
-    function cropForOcr(canvas, reg) {
-      const sx = Math.round(canvas.width * reg[0]), sy = Math.round(canvas.height * reg[1]);
-      const sw = Math.round(canvas.width * (reg[2] - reg[0])), sh = Math.round(canvas.height * (reg[3] - reg[1]));
-      const out = document.createElement('canvas');
-      out.width = sw * 2; out.height = sh * 2;
-      const ctx = out.getContext('2d', { willReadFrequently: true });
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, out.width, out.height);
-      ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, out.width, out.height);
-      const img = ctx.getImageData(0, 0, out.width, out.height);
-      const d = img.data;
-      for (let i = 0; i < d.length; i += 4) { d[i + 1] = d[i]; d[i + 2] = d[i]; } // 赤の成分だけを使う
-      // 罫線（長い横線・縦線）を消す。文字に重なると読み間違えるため
-      const w = out.width, h = out.height;
-      const dark = (x, y) => d[(y * w + x) * 4] < 140;
-      const whiten = (x, y) => { const i = (y * w + x) * 4; d[i] = d[i + 1] = d[i + 2] = 255; };
-      const rowHit = [], colHit = [];
-      for (let y = 0; y < h; y++) { let n = 0; for (let x = 0; x < w; x++) if (dark(x, y)) n++; rowHit[y] = n > w * 0.6; }
-      for (let x = 0; x < w; x++) { let n = 0; for (let y = 0; y < h; y++) if (dark(x, y)) n++; colHit[x] = n > h * 0.85; }
-      for (let y = 0; y < h; y++) if (rowHit[y]) for (let x = 0; x < w; x++) { whiten(x, y); if (y + 1 < h) whiten(x, y + 1); if (y > 0) whiten(x, y - 1); }
-      for (let x = 0; x < w; x++) if (colHit[x]) for (let y = 0; y < h; y++) { whiten(x, y); if (x + 1 < w) whiten(x + 1, y); if (x > 0) whiten(x - 1, y); }
-      ctx.putImageData(img, 0, 0);
-      return out;
-    }
+    // 画面に出す見本の範囲（ページ全体に対する割合）：[左, 上, 右, 下]
+    const REG = { thumb: [0.040, 0.085, 0.975, 0.245] };
 
     // 画面に出す画像：薄いスキャンでも読めるよう、白黒にして、文字を濃くする
     function enhancedImage(canvas, reg, width, quality) {
@@ -704,16 +672,6 @@
     }
     window.addEventListener('keydown', e => { const ov = el('zoomOverlay'); if (e.key === 'Escape' && ov) ov.hidden = true; });
 
-    function parseId(text) {
-      const t = String(text || '').replace(/\s+/g, '');
-      let m = t.match(/号\D{0,2}(\d{3,12})/);
-      if (!m) {
-        const runs = t.match(/\d{3,12}/g);
-        if (runs) m = [null, runs.sort((a, b) => b.length - a.length)[0]];
-      }
-      return m ? m[1].replace(/^0+(?=\d)/, '') : '';
-    }
-
     function pad2(n) { return String(n).padStart(2, '0'); }
     function parseDate(text) {
       const t = String(text || '').replace(/\s+/g, '');
@@ -738,6 +696,154 @@
       return digits && digits.length <= 7 ? Number(digits) : null;
     }
 
+    // ── 読み取り（文字の塊を見つけて、数字だけを読む） ──
+    // 黒い画素の表を作る。赤の成分だけを使うので、赤枠は消える。長い罫線も消す。
+    function inkOf(canvas, reg) {
+      const sx = Math.round(canvas.width * reg[0]), sy = Math.round(canvas.height * reg[1]);
+      const w = Math.round(canvas.width * (reg[2] - reg[0])), h = Math.round(canvas.height * (reg[3] - reg[1]));
+      const d = canvas.getContext('2d').getImageData(sx, sy, w, h).data;
+      const ink = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) ink[i] = d[i * 4] < 150 ? 1 : 0;
+      for (let y = 0; y < h; y++) {
+        let n = 0; for (let x = 0; x < w; x++) n += ink[y * w + x];
+        if (n > w * 0.6) for (let yy = Math.max(0, y - 1); yy <= Math.min(h - 1, y + 1); yy++) for (let x = 0; x < w; x++) ink[yy * w + x] = 0;
+      }
+      for (let x = 0; x < w; x++) {
+        let n = 0; for (let y = 0; y < h; y++) n += ink[y * w + x];
+        if (n > h * 0.85) for (let xx = Math.max(0, x - 1); xx <= Math.min(w - 1, x + 1); xx++) for (let y = 0; y < h; y++) ink[y * w + xx] = 0;
+      }
+      return { w, h, sx, sy, ink, pageH: canvas.height };
+    }
+    // 連続して黒がある範囲を探す（merge 以下の隙間は、同じ塊とみなす）
+    function runsOf(proj, merge, minLen) {
+      const out = []; let s = -1, last = -1;
+      for (let i = 0; i < proj.length; i++) {
+        if (proj[i] > 0) { if (s < 0) s = i; else if (i - last - 1 > merge) { out.push([s, last]); s = i; } last = i; }
+      }
+      if (s >= 0) out.push([s, last]);
+      return out.filter(r => r[1] - r[0] + 1 >= (minLen || 1));
+    }
+    function rowProj(m) { const p = new Array(m.h).fill(0); for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) p[y] += m.ink[y * m.w + x]; return p; }
+    function colProj(m, y0, y1) { const p = new Array(m.w).fill(0); for (let x = 0; x < m.w; x++) for (let y = y0; y <= y1; y++) p[x] += m.ink[y * m.w + x]; return p; }
+    // 文字の行のうち、期待する高さ（ページに対する割合）にいちばん近いもの
+    function pickRun(m, center, minH) {
+      let best = null, bd = 1e9;
+      for (const r of runsOf(rowProj(m), 1, minH || 6)) {
+        const dd = Math.abs((m.sy + (r[0] + r[1]) / 2) / m.pageH - center);
+        if (dd < bd) { bd = dd; best = r; }
+      }
+      return best;
+    }
+    function groupsOf(m, run, merge) {
+      return runsOf(colProj(m, run[0], run[1]), merge, 1).map(g => {
+        let y0 = 1e9, y1 = -1;
+        for (let y = run[0]; y <= run[1]; y++) for (let x = g[0]; x <= g[1]; x++) if (m.ink[y * m.w + x]) { if (y < y0) y0 = y; if (y > y1) y1 = y; break; }
+        return { x0: g[0], x1: g[1], w: g[1] - g[0] + 1, h: y1 - y0 + 1 };
+      });
+    }
+    // 黒画素の一部分を、白地に黒の画像にする（なめらかに拡大して、読み取りに渡す）
+    function inkImage(m, x0, x1, y0, y1, factor) {
+      const pad = 12, w = x1 - x0 + 1 + 2 * pad, h = y1 - y0 + 1 + 2 * pad;
+      const base = document.createElement('canvas'); base.width = w; base.height = h;
+      const g = base.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.fillStyle = '#000';
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (m.ink[y * m.w + x]) g.fillRect(x - x0 + pad, y - y0 + pad, 1, 1);
+      const o = document.createElement('canvas'); o.width = Math.round(w * factor); o.height = Math.round(h * factor);
+      const og = o.getContext('2d'); og.imageSmoothingEnabled = true; og.imageSmoothingQuality = 'high';
+      og.drawImage(base, 0, 0, o.width, o.height);
+      return o;
+    }
+    const digitsOnly = s => String(s || '').replace(/[^\d]/g, '');
+
+    // 患者番号：2通りの拡大で読み、一致したときだけ確定する（違う人の番号にならないように）
+    async function readPatientNumber(canvas, ocr) {
+      const m = inkOf(canvas, [0.05, 0.085, 0.26, 0.150]);
+      const run = pickRun(m, 0.117);
+      if (!run) return { num: '', note: '患者番号の位置が見つかりません。入力してください' };
+      const groups = groupsOf(m, run, 9).filter(g => g.w >= 3);
+      const g = groups[groups.length - 1];
+      if (!g || groups.length < 2) return { num: '', note: '患者番号の位置が見つかりません。入力してください' };
+      await ocr.eng.setParameters({ tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '8' });
+      const reads = [];
+      for (const f of [2, 3]) reads.push(digitsOnly((await ocr.eng.recognize(inkImage(m, g.x0, g.x1, run[0], run[1], f))).data.text).replace(/^0+(?=\d)/, ''));
+      if (reads[0] && reads[0] === reads[1] && reads[0].length <= 12) return { num: reads[0], note: '' };
+      return { num: '', note: '患者番号を確定できませんでした（読み取り候補：' + reads.filter(Boolean).join(' / ') + '）。見本の画像を見て、入力してください' };
+    }
+
+    // 発行日（「令和08年11月16日」）：数字の部分だけを切り出して読む。
+    // 文字の塊が12個（令・和・和の右半分・数字2つ・年・数字2つ・月・数字2つ・日）に分かれたときは、年・月・日の数字を、それぞれ読む。
+    // そうならないとき（桁が1つの月日など）は、行全体を何通りかで読んで、多数決で決める。
+    function inWindow(iso) {
+      const t = new Date(iso + 'T00:00:00').getTime(), now = Date.now();
+      return t <= now + 86400000 && t >= now - 62 * 86400000;
+    }
+    async function readIssueDate(canvas, ocr) {
+      const m = inkOf(canvas, [0.74, 0.085, 0.985, 0.17]);
+      const run = pickRun(m, 0.124);
+      if (!run) return '';
+      const groups = groupsOf(m, run, 25).filter(g => g.w >= 3);
+      const g = groups[groups.length - 1];
+      if (!g || groups.length < 2) return '';
+
+      const glyphs = groupsOf(m, run, 0).filter(x => x.x0 >= g.x0 - 1 && x.x1 <= g.x1 + 1);
+      if (glyphs.length === 12) {
+        await ocr.eng.setParameters({ tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '8' });
+        const field = async (i, j) => {
+          const reads = [];
+          for (const f of [2, 3]) reads.push(digitsOnly((await ocr.eng.recognize(inkImage(m, glyphs[i].x0, glyphs[j].x1, run[0], run[1], f))).data.text));
+          return reads[0] === reads[1] && reads[0].length === 2 ? Number(reads[0]) : null;
+        };
+        const y = await field(3, 4), mo = await field(6, 7), d = await field(9, 10);
+        if (y !== null && mo !== null && d !== null) {
+          const iso = parseDate('令和' + y + '年' + mo + '月' + d + '日');
+          if (iso) return iso;
+        }
+      }
+
+      const votes = {};
+      for (const psm of ['7', '8']) {
+        await ocr.jpn.setParameters({ tessedit_char_whitelist: '0123456789年月日令和平成', tessedit_pageseg_mode: psm });
+        for (const f of [1.5, 2, 3]) {
+          const iso = parseDate((await ocr.jpn.recognize(inkImage(m, g.x0, g.x1, run[0], run[1], f))).data.text);
+          if (iso && inWindow(iso)) votes[iso] = (votes[iso] || 0) + 1;
+        }
+      }
+      const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+      return (sorted.length && sorted[0][1] >= 2 && (sorted.length === 1 || sorted[0][1] > sorted[1][1])) ? sorted[0][0] : '';
+    }
+
+    // 先頭の「¥ 3,620」：2通りの拡大で一致し、桁区切りも正しいときだけ採用する
+    async function readTopAmount(canvas, ocr) {
+      const m = inkOf(canvas, [0.14, 0.165, 0.42, 0.245]);
+      const run = pickRun(m, 0.205, 8);
+      if (!run) return null;
+      const groups = groupsOf(m, run, 45).filter(g => g.w >= 3);
+      const g = groups[groups.length - 1];
+      if (!g || groups.length < 2) return null;
+      await ocr.eng.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '8' });
+      const a = (await ocr.eng.recognize(inkImage(m, g.x0, g.x1, run[0], run[1], 2))).data.text.trim();
+      const b = (await ocr.eng.recognize(inkImage(m, g.x0, g.x1, run[0], run[1], 3))).data.text.trim();
+      if (a !== b || !/^\d{1,3}(,\d{3})*$/.test(a)) return null;
+      return parseAmount(a);
+    }
+
+    // 金額の欄（今回請求額・合計請求額・今回入金額）：右端の「円」を除いて、数字だけを読む
+    async function readAmountCell(canvas, ocr, x0, x1) {
+      const m = inkOf(canvas, [x0, 0.366, x1, 0.404]);
+      const run = pickRun(m, 0.391, 8);
+      if (!run) return null;
+      const runH = run[1] - run[0] + 1;
+      let gs = groupsOf(m, run, 2).filter(g => !(g.w <= 4 && g.h >= runH * 0.7) && g.h >= 4); // 縦の細い線の残りは除く
+      if (gs.length >= 2) {
+        const rest = gs.slice(0, -1).map(g => g.w).sort((a, b) => a - b);
+        if (gs[gs.length - 1].w > rest[Math.floor(rest.length / 2)] * 1.35) gs = gs.slice(0, -1); // 「円」
+      }
+      if (!gs.length) return null;
+      await ocr.eng.setParameters({ tessedit_char_whitelist: '0123456789,', tessedit_pageseg_mode: '8' });
+      const a = parseAmount((await ocr.eng.recognize(inkImage(m, gs[0].x0, gs[gs.length - 1].x1, run[0], run[1], 2))).data.text);
+      const b = parseAmount((await ocr.eng.recognize(inkImage(m, gs[0].x0, gs[gs.length - 1].x1, run[0], run[1], 3))).data.text);
+      return (a !== null && a === b) ? a : null;
+    }
+
     async function readPdfFirstPage(file) {
       await loadLib('pdfjs');
       pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
@@ -750,15 +856,22 @@
       await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
 
       const ocr = await getOcr();
-      const [idText, dateText, amtText, amt2Text] = [
-        (await ocr.jpn.recognize(cropForOcr(canvas, REG.id))).data.text,
-        (await ocr.jpn.recognize(cropForOcr(canvas, REG.date))).data.text,
-        (await ocr.eng.recognize(cropForOcr(canvas, REG.amt))).data.text,
-        (await ocr.eng.recognize(cropForOcr(canvas, REG.amt2))).data.text
-      ];
+      const id = await readPatientNumber(canvas, ocr);
+      const date = await readIssueDate(canvas, ocr);
+      const amtTop = await readTopAmount(canvas, ocr);
+      const cells = [];
+      for (const [x0, x1] of [[0.046, 0.155], [0.274, 0.381], [0.387, 0.494]]) cells.push(await readAmountCell(canvas, ocr, x0, x1));
+      // 金額の欄は、読み間違いが混ざることがある。先頭の金額と一致するものがあれば、それを使う。なければ、いちばん多い値
+      const boxVals = cells.filter(v => v !== null);
+      let amtBox = null;
+      if (amtTop !== null && boxVals.includes(amtTop)) amtBox = amtTop;
+      else if (boxVals.length) {
+        const cnt = {}; boxVals.forEach(v => { cnt[v] = (cnt[v] || 0) + 1; });
+        amtBox = Number(Object.entries(cnt).sort((a, b) => b[1] - a[1])[0][0]);
+      }
       const thumb = thumbOf(canvas), full = fullOf(canvas);
       canvas.width = 1; canvas.height = 1;
-      return { num: parseId(idText), date: parseDate(dateText), amtTop: parseAmount(amtText), amtBox: parseAmount(amt2Text), thumb, full };
+      return { num: id.num, idNote: id.note, date, amtTop, amtBox, thumb, full };
     }
 
     // ── 一覧の状態 ──
@@ -769,8 +882,8 @@
 
     function amountStatus(r) {
       if (r.amtManual) return 'manual';
-      if (r.amtTop && r.amtBox) return r.amtTop === r.amtBox ? 'match' : 'mismatch';
-      return (r.amtTop || r.amtBox) ? 'single' : 'none';
+      if (r.amtTop !== null && r.amtBox !== null) return r.amtTop === r.amtBox ? 'match' : 'mismatch';
+      return (r.amtTop !== null || r.amtBox !== null) ? 'single' : 'none';
     }
     function amountValid(a) { return Number.isInteger(a) && a >= 1 && a <= 200000; }
     function dateOk(iso) {
@@ -780,7 +893,7 @@
       return t <= now + 86400000 && t >= now - 400 * 86400000;
     }
     function canUpload(r) { return !!(r.check && r.check.docVerified && r.date && r.fileOk && !r.uploaded); }
-    function canCharge(r) { return !!(r.check && r.check.charge && amountValid(r.amount) && !r.charged); }
+    function canCharge(r) { return !!(r.check && r.check.charge && amountValid(r.amount) && r.date && !r.charged); }
 
     function setDefaults(r) {
       r.doUpload = canUpload(r) && dateOk(r.date);
@@ -816,7 +929,8 @@
       if (!r.date) add('ng', '発行日が読めません。入力してください');
       else if (!dateOk(r.date)) add('warnt', '発行日が、今日から離れています。確認してください（' + r.date + '）');
       const st = amountStatus(r);
-      if (st === 'match') add('good', '請求金額：2か所の読み取りが一致しました');
+      if (r.amount === 0 && !r.amtManual) add('', '請求金額：0円（請求はありません）');
+      else if (st === 'match') add('good', '請求金額：2か所の読み取りが一致しました');
       else if (st === 'manual') add('', '請求金額：手入力');
       else if (st === 'mismatch') add('warnt', '請求金額：2か所の読み取りが一致しません（' + r.amtTop + ' 円 と ' + r.amtBox + ' 円）。見本の画像を見て、入力してください');
       else if (st === 'single') add('warnt', '請求金額：1か所しか読めませんでした。見本の画像を見て、確かめてください');
@@ -885,7 +999,7 @@
       });
       const amtIn = document.createElement('input');
       amtIn.type = 'number'; amtIn.inputMode = 'numeric'; amtIn.min = 1; amtIn.max = 200000;
-      amtIn.value = r.amount || ''; amtIn.style.maxWidth = '120px';
+      amtIn.value = r.amount === null ? '' : r.amount; amtIn.style.maxWidth = '120px';
       amtIn.disabled = r.charged || batchBusy; // 請求済みの金額は変えない（二重請求を防ぐ）
       amtIn.addEventListener('change', () => {
         const v = Number(amtIn.value);
@@ -978,10 +1092,10 @@
         setMsg('batchMsg', '読み取り中... ' + (done + 1) + ' / ' + rows.length + '（初回は、読み取りの準備に少し時間がかかります）', '');
         try {
           const got = await readPdfFirstPage(r.file);
-          r.num = got.num; r.date = got.date; r.amtTop = got.amtTop; r.amtBox = got.amtBox; r.thumb = got.thumb; r.full = got.full;
+          r.num = got.num; r.readNote = got.idNote || ''; r.date = got.date; r.amtTop = got.amtTop; r.amtBox = got.amtBox; r.thumb = got.thumb; r.full = got.full;
           const st = amountStatus(r);
-          r.amount = (st === 'match' || st === 'single') ? (r.amtTop || r.amtBox) : (r.amtTop || r.amtBox || null);
-          if (!amountValid(r.amount)) r.amount = null;
+          r.amount = r.amtTop !== null ? r.amtTop : r.amtBox;
+          if (r.amount !== 0 && !amountValid(r.amount)) r.amount = null;
         } catch (e) {
           r.readNote = '自動で読み取れませんでした。下の欄に、入力してください';
         }
