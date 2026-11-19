@@ -497,11 +497,13 @@
             : '受付での確認：未（初回は、受付で診察券をご提示のうえ、確認をお受けください）');
         box.appendChild(status);
         if (card.mismatch) {
+          const title = document.createElement('div');
+          title.textContent = 'お知らせ！';
+          title.style.cssText = 'display:block;margin-top:12px;color:#c62828;font-weight:bold;font-size:1.05rem';
           const warn = document.createElement('div');
-          warn.className = 'form-error';
-          warn.style.cssText = 'display:block;margin-top:8px;line-height:1.6;font-weight:bold';
+          warn.style.cssText = 'display:block;margin-top:4px;padding:12px 14px;border:3px solid #c62828;border-radius:10px;background:#fff;color:#c62828;font-size:0.95rem;line-height:1.7;font-weight:bold';
           warn.textContent = '診察券番号と患者様氏名もしくは生年月日が不一致でした。診察券番号をお確かめいただき、再度ご登録頂くか、直接当院受付にお申し出ください。';
-          box.appendChild(warn);
+          box.append(title, warn);
         }
       } else {
         box.textContent = 'カードは未登録です';
