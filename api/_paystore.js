@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { getDb } = require('./_firebase');
-const { encrypt, decrypt, deriveKey, userPath } = require('./_cardstore');
+const { encrypt, decrypt, deriveKey, userPath, normalizeCardNumber } = require('./_cardstore');
 
 // 支払い用カードの保存。Firebase は公開読み取りのため、すべて暗号化して保存する。
 // stripeCustomers/{HMAC(LINEユーザー)} に、顧客ID・支払い方法ID・カード表示用の情報・受付の確認結果を持つ。
@@ -55,10 +55,22 @@ async function loadAllRecords() {
   return out;
 }
 
+// 診察券（番号・氏名・生年月日）の内容の指紋。受付が「不一致」にした時点の内容と、今の内容が同じかを比べる
+function cardsSignature(cards) {
+  const rows = (cards || []).map(c => [normalizeCardNumber(c.cardNumber) || String(c.cardNumber), c.name, c.birth].join('|')).sort();
+  return crypto.createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+}
+
+// 受付が「不一致」にしたままか（患者さんが診察券の内容を直したら、自動で解除される）
+function isRejected(record, cards) {
+  return !!(record && record.rejection && record.rejection.sig === cardsSignature(cards));
+}
+
 // 患者さん本人の画面に返してよい項目だけ
-function publicView(record) {
+function publicView(record, cards) {
   if (!record || !record.paymentMethodId) return null;
   return {
+    mismatch: !record.verifiedCardNumber && isRejected(record, cards),
     brand: record.brand,
     last4: record.last4,
     expMonth: record.expMonth,
@@ -70,5 +82,5 @@ function publicView(record) {
 
 module.exports = {
   recordId, loadRecord, saveRecord, loadRecordById, saveRecordById,
-  loadCardsOf, loadAllRecords, publicView
+  loadCardsOf, loadAllRecords, publicView, cardsSignature, isRejected
 };

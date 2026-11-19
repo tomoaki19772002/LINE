@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const Stripe = require('stripe');
 const { getDb } = require('./_firebase');
 const { encrypt, decrypt, normalizeCardNumber } = require('./_cardstore');
-const { loadAllRecords, loadRecordById, saveRecordById, loadCardsOf } = require('./_paystore');
+const { loadAllRecords, loadRecordById, saveRecordById, loadCardsOf, cardsSignature, isRejected } = require('./_paystore');
 const { upsertPayment, listPayments } = require('./_payments');
 const {
   MAX_PDF_BYTES, KINDS, getVerifiedOwner, setVerifiedOwner, saveStatement, listStatements, deleteStatement
@@ -166,9 +166,18 @@ module.exports = async (req, res) => {
       const all = await loadAllRecords();
       const verifiedNumbers = new Set(all.map(a => normalizeCardNumber(a.record.verifiedCardNumber)).filter(Boolean));
       const items = [];
+      const rejected = [];
       for (const { id, record } of all) {
         if (!record.paymentMethodId || record.verifiedCardNumber) continue;
         const cards = await loadCardsOf(record);
+        if (isRejected(record, cards)) {
+          // 受付が「不一致」にしたもの（患者さんが診察券の内容を直すまで、確認待ちには出さない）
+          rejected.push({
+            ref: id, brand: record.brand, last4: record.last4, rejectedAt: record.rejection.at,
+            cards: cards.map(c => ({ cardNumber: c.cardNumber, name: c.name, birth: c.birth }))
+          });
+          continue;
+        }
         items.push({
           ref: id,
           brand: record.brand,
@@ -181,7 +190,34 @@ module.exports = async (req, res) => {
         });
       }
       items.sort((a, b) => b.registeredAt - a.registeredAt);
-      res.status(200).json({ items });
+      rejected.sort((a, b) => b.rejectedAt - a.rejectedAt);
+      res.status(200).json({ items, rejected });
+      return;
+    }
+
+    // 診察券番号と氏名・生年月日が合わないとき：患者さんの画面にお知らせを出す（LINEのメッセージは送らない）
+    if (body.action === 'reject' || body.action === 'unreject') {
+      const ref = String(body.ref || '');
+      if (!/^[0-9a-f]{64}$/.test(ref)) {
+        res.status(400).json({ error: 'invalid input' });
+        return;
+      }
+      const record = await loadRecordById(ref);
+      if (!record || !record.paymentMethodId) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      if (body.action === 'reject') {
+        if (record.verifiedCardNumber) {
+          res.status(409).json({ error: 'already verified' });
+          return;
+        }
+        record.rejection = { sig: cardsSignature(await loadCardsOf(record)), at: Date.now() };
+      } else {
+        delete record.rejection;
+      }
+      await saveRecordById(ref, record);
+      res.status(200).json({ ok: true });
       return;
     }
 
@@ -214,6 +250,7 @@ module.exports = async (req, res) => {
       }
       record.verifiedCardNumber = cardNumber;
       record.verifiedAt = Date.now();
+      delete record.rejection;
       await saveRecordById(ref, record);
       res.status(200).json({ ok: true });
       return;

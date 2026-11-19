@@ -1,6 +1,6 @@
 const Stripe = require('stripe');
 const { verifyIdToken } = require('./_lineauth');
-const { loadRecord, saveRecord, publicView } = require('./_paystore');
+const { loadRecord, saveRecord, publicView, loadCardsOf } = require('./_paystore');
 
 // 支払い用クレジットカードの登録（Stripe SetupIntent）。
 // カード番号は Stripe の埋め込みフォームから Stripe へ直接送られ、当院のサーバーには届かない。
@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       res.status(200).json({
         publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
-        card: publicView(record)
+        card: publicView(record, await loadCardsOf(record))
       });
       return;
     }
@@ -81,12 +81,13 @@ module.exports = async (req, res) => {
           expYear: card.exp_year || null,
           consentAt: Date.now()
         });
+        delete record.rejection; // 登録し直したら、受付での確認をやり直す
         await saveRecord(sub, record);
 
         if (oldPm && oldPm !== pm.id) {
           await stripe.paymentMethods.detach(oldPm).catch(() => {});
         }
-        res.status(200).json({ card: publicView(record) });
+        res.status(200).json({ card: publicView(record, await loadCardsOf(record)) });
         return;
       }
 
@@ -99,7 +100,7 @@ module.exports = async (req, res) => {
       if (record && record.paymentMethodId) {
         await stripe.paymentMethods.detach(record.paymentMethodId).catch(() => {});
         ['paymentMethodId', 'brand', 'last4', 'expMonth', 'expYear', 'consentAt',
-          'verifiedCardNumber', 'verifiedAt'].forEach(k => { delete record[k]; });
+          'verifiedCardNumber', 'verifiedAt', 'rejection'].forEach(k => { delete record[k]; });
         await saveRecord(sub, record);
       }
       res.status(200).json({ card: null });

@@ -224,6 +224,11 @@
       </div>
       <p class="hint">患者さんが自分で登録した内容です。診察券と本人（保険証など）で名前・生年月日を確かめてから「確認済みにする」を押してください。確認済みの診察券番号にだけ請求できます。</p>
       <div id="pendingList"><span class="empty">読み込み中...</span></div>
+      <div id="rejectedBox" hidden>
+        <h2 style="font-size:1rem;margin-top:8px">「不一致」にしたカード登録</h2>
+        <p class="hint">患者さんの画面に、不一致のお知らせが出ています。患者さんが診察券の内容を直すと、自動で、確認待ちに戻ります。間違えて押したときは、「元に戻す」を押してください。</p>
+        <div id="rejectedList"></div>
+      </div>
     </div>
 
     <!-- 履歴 -->
@@ -378,6 +383,7 @@
       const box = el('pendingList');
       try {
         const data = await api({ action: 'pending' });
+        renderRejected(data.rejected || []);
         box.innerHTML = '';
         if (data.items.length === 0) {
           box.innerHTML = '<span class="empty">確認待ちはありません</span>';
@@ -394,6 +400,23 @@
           head.textContent = item.brand.toUpperCase() + ' •••• ' + item.last4 + '（' +
             new Date(item.registeredAt).toLocaleString('ja-JP') + ' 登録）';
           wrap.appendChild(head);
+
+          const rejBtn = document.createElement('button');
+          rejBtn.className = 'btn ghost small';
+          rejBtn.style.alignSelf = 'flex-start';
+          rejBtn.textContent = '番号と名前が不一致';
+          rejBtn.addEventListener('click', async () => {
+            if (!confirm('診察券番号と、氏名・生年月日が合わないものとして、患者さんの画面に「不一致」のお知らせを出します。\n（LINEのメッセージは送られません）\nよろしいですか？')) return;
+            rejBtn.disabled = true;
+            try {
+              await api({ action: 'reject', ref: item.ref });
+              loadPending();
+            } catch (err) {
+              rejBtn.disabled = false;
+              alert(err.status === 409 ? 'すでに確認済みのため、不一致にできません' : '不一致にできませんでした');
+            }
+          });
+          wrap.appendChild(rejBtn);
 
           if (item.cards.length === 0) {
             const none = document.createElement('div');
@@ -431,6 +454,30 @@
         if (err.status === 401) { tryLogin(); return; }
         box.innerHTML = '<span class="empty">読み込めませんでした</span>';
       }
+    }
+    function renderRejected(list) {
+      el('rejectedBox').hidden = list.length === 0;
+      const box = el('rejectedList');
+      box.innerHTML = '';
+      list.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'card-row';
+        row.style.padding = '6px 0';
+        const text = document.createElement('span');
+        text.textContent = it.brand.toUpperCase() + ' •••• ' + it.last4 + '　' +
+          (it.cards.length ? it.cards.map(c => '診察券 ' + c.cardNumber + '　' + c.name + ' 様').join(' / ') : '診察券なし') +
+          '（' + new Date(it.rejectedAt).toLocaleString('ja-JP') + ' 不一致）';
+        const btn = document.createElement('button');
+        btn.className = 'btn ghost small';
+        btn.textContent = '元に戻す';
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try { await api({ action: 'unreject', ref: it.ref }); loadPending(); }
+          catch (err) { btn.disabled = false; alert('元に戻せませんでした'); }
+        });
+        row.append(text, btn);
+        box.appendChild(row);
+      });
     }
     el('refreshPendingBtn').addEventListener('click', loadPending);
 
